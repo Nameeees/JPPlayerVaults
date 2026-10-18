@@ -14,6 +14,18 @@ config-version: 1
 # Drop your own messages_<code>.yml here to add another one.
 language: en
 
+# How the colours of messages_<language>.yml are read:
+#   legacy      -> & codes and &#RRGGBB everywhere. Works on any version.
+#   minimessage -> MiniMessage tags (<red>, <#ff8800>, <gradient:...>,
+#                  <click:...>). Needs Paper/Adventure (1.16+).
+#   auto        -> legacy, except messages that actually contain
+#                  MiniMessage tags, which need Adventure as well.
+#
+# 'auto' is the safest default: the bundled files use legacy colours,
+# so nothing changes on old servers, and a message you rewrite with
+# MiniMessage tags is picked up automatically on modern ones.
+messages-format: auto
+
 vaults:
   # Size of each vault, in slots. Multiple of 9, from 9 to 54.
   # 54 (6 rows) is the biggest inventory Minecraft allows.
@@ -24,6 +36,13 @@ vaults:
   # Highest jpvaults.vaults.<n> the plugin checks.
   # Raise it if a rank should get more vaults (1-100).
   max-amount: 10
+  # '/pv' with no arguments opens a menu with one icon per vault.
+  # false = show the help text instead (the 1.x behaviour).
+  picker: true
+  # Longest inventory title, in visible characters. 1.8-1.12
+  # clients break with titles longer than 32, so it is capped by
+  # default; 0 = no limit (only if every client is modern).
+  title-max-length: 32
 
 storage:
   # Where the vaults are stored: 'yaml' (one file per player) or
@@ -38,6 +57,22 @@ storage:
   # 0 = disabled (vaults are still saved on close, quit and
   # server shutdown).
   autosave-seconds: 300
+  # How the items are stored when type is 'mysql':
+  #   auto   -> NBT if the server has it (Paper 1.20.5+), else bukkit.
+  #   nbt    -> always NBT. Safer across Minecraft updates: it uses
+  #             Minecraft's own data converter, keeps slot order and
+  #             gaps, and is more compact.
+  #   bukkit -> always Bukkit serialization. Portable between Paper
+  #             and Spigot, but migrates with Bukkit's converter.
+  # NBT blobs can only be read by a server that has the API: before
+  # moving the world to Spigot, set 'bukkit' on Paper and re-save.
+  item-format: auto
+  # How the items are stored when type is 'yaml':
+  #   readable -> vaults.<n>.items.<slot> with one item per slot. Can
+  #               be repaired by hand (that is the point of YAML).
+  #   nbt      -> the whole vault as Base64 NBT in vaults.<n>.nbt.
+  #               Not hand-editable, but migrated by Minecraft itself.
+  yaml-format: readable
 
   # Only used when type is 'mysql'. If the database cannot be
   # reached the plugin logs the error and keeps working with
@@ -61,6 +96,13 @@ storage:
     # and then org.mariadb.jdbc.Driver. Spigot and Paper ship the
     # MySQL driver, so normally you do not need to set anything.
     driver-class: ''
+    # Optional: a .jar next to the plugin to load the driver from.
+    # Any .jar inside plugins/JPPlayerVaults/lib/ is tried as well,
+    # so a server without the driver only needs that file.
+    # (Paper can also download it for you from plugin.yml with
+    #  'libraries: [com.mysql:mysql-connector-j:8.0.33]', but then
+    #  every start needs internet, so the lib/ folder is safer.)
+    driver-jar: ''
     # Reused connections and connection timeout.
     pool-size: 4
     connection-timeout-ms: 5000

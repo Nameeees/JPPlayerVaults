@@ -50,9 +50,16 @@ public final class YamlVaultStorage implements VaultStorage {
     private final JPPlayerVaults plugin;
     private final File folder;
     private final ExecutorService writer;
+    /** true = guarda cada vault como NBT en Base64 en vez de items legibles. */
+    private final boolean compactItems;
 
     public YamlVaultStorage(JPPlayerVaults plugin, String folderName) {
+        this(plugin, folderName, false);
+    }
+
+    public YamlVaultStorage(JPPlayerVaults plugin, String folderName, boolean compactItems) {
         this.plugin = plugin;
+        this.compactItems = compactItems;
         this.folder = new File(plugin.getDataFolder(), folderName);
         if (!folder.exists() && !folder.mkdirs()) {
             plugin.getLogger().warning("Could not create the player data folder: " + folder);
@@ -90,8 +97,25 @@ public final class YamlVaultStorage implements VaultStorage {
         int brokenItems = 0;
         for (String vaultKey : vaults.getKeys(false)) {
             int number = parseKey(vaultKey);
+            if (number < 1) {
+                continue;
+            }
+            // Formato compacto: el vault entero en NBT (Base64).
+            String packed = vaults.getString(vaultKey + ".nbt");
+            if (packed != null && !packed.isEmpty()) {
+                try {
+                    byte[] blob = java.util.Base64.getDecoder().decode(packed);
+                    ItemStack[] decoded = VaultCodec.decode(blob, PlayerVaultData.SIZE);
+                    ItemStack[] contents = data.getVaultContents(number);
+                    System.arraycopy(decoded, 0, contents, 0, Math.min(decoded.length, contents.length));
+                } catch (IllegalArgumentException | IOException damaged) {
+                    plugin.getLogger().warning("Could not read the compact vault #" + number + " of " + owner
+                            + ": " + damaged.getMessage());
+                }
+                continue;
+            }
             ConfigurationSection items = vaults.getConfigurationSection(vaultKey + ".items");
-            if (number < 1 || items == null) {
+            if (items == null) {
                 continue;
             }
             ItemStack[] contents = data.getVaultContents(number);
@@ -214,12 +238,25 @@ public final class YamlVaultStorage implements VaultStorage {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.options().header("JPPlayerVaults - player data\n"
                 + "Generated automatically: do not edit it while the server is running.\n"
-                + "vaults.<number>.items.<slot> stores one item per non-empty slot.");
+                + (compactItems
+                        ? "storage.yaml-format: nbt -> each vault is stored as Base64 NBT in vaults.<number>.nbt.\n"
+                          + "It is not hand-editable, but Minecraft migrates it across versions by itself."
+                        : "vaults.<number>.items.<slot> stores one item per non-empty slot."));
         yaml.set("uuid", data.getOwner().toString());
         yaml.set("last-known-name", data.getLastName());
         for (Map.Entry<Integer, ItemStack[]> entry : data.getVaults().entrySet()) {
-            ConfigurationSection items = yaml.createSection("vaults." + entry.getKey() + ".items");
             ItemStack[] contents = entry.getValue();
+            if (compactItems) {
+                try {
+                    byte[] blob = VaultCodec.encode(contents, VaultCodec.nbtAvailable());
+                    yaml.set("vaults." + entry.getKey() + ".nbt", java.util.Base64.getEncoder().encodeToString(blob));
+                } catch (IOException failure) {
+                    plugin.getLogger().warning("Could not pack vault #" + entry.getKey() + " of "
+                            + data.getOwner() + ": " + failure.getMessage());
+                }
+                continue;
+            }
+            ConfigurationSection items = yaml.createSection("vaults." + entry.getKey() + ".items");
             for (int slot = 0; slot < contents.length; slot++) {
                 ItemStack item = contents[slot];
                 if (item != null && item.getType() != Material.AIR) {

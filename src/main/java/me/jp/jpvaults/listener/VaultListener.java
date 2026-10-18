@@ -1,7 +1,9 @@
 package me.jp.jpvaults.listener;
 
 import me.jp.jpvaults.JPPlayerVaults;
+import me.jp.jpvaults.menu.PickerHolder;
 import me.jp.jpvaults.menu.VaultHolder;
+import me.jp.jpvaults.util.Schedulers;
 import me.jp.jpvaults.util.UiSound;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -12,6 +14,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
 import java.lang.reflect.Method;
@@ -47,10 +50,28 @@ public final class VaultListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player)) {
             return;
         }
-        if (!(event.getView().getTopInventory().getHolder() instanceof VaultHolder)) {
+        Player player = (Player) event.getWhoClicked();
+        InventoryHolder topHolder = event.getView().getTopInventory().getHolder();
+
+        // Menu selector: cualquier clic se cancela y el icono pulsado abre su vault.
+        if (topHolder instanceof PickerHolder) {
+            event.setCancelled(true);
+            int slot = event.getRawSlot();
+            if (slot < 0 || slot >= event.getView().getTopInventory().getSize()) {
+                return;
+            }
+            final PickerHolder picker = (PickerHolder) topHolder;
+            plugin.playUiSound(player, UiSound.SUCCESS);
+            // Un tick despues: abrir un inventario dentro del propio evento de
+            // clic es fragil en algunas versiones.
+            Schedulers.runLaterForEntity(plugin, player,
+                    () -> plugin.getVaultManager().openFromPicker(player, picker, slot));
             return;
         }
-        Player player = (Player) event.getWhoClicked();
+
+        if (!(topHolder instanceof VaultHolder)) {
+            return;
+        }
 
         // Clic en el hueco oscuro fuera de la ventana: en un cofre vanilla
         // tiraria el objeto del cursor al suelo; aqui se bloquea para no perderlo.

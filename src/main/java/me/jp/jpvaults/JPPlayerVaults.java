@@ -7,16 +7,23 @@ import me.jp.jpvaults.manager.VaultManager;
 import me.jp.jpvaults.storage.SqlSettings;
 import me.jp.jpvaults.storage.SqlVaultStorage;
 import me.jp.jpvaults.storage.StorageType;
+import me.jp.jpvaults.storage.VaultCodec;
 import me.jp.jpvaults.storage.VaultStorage;
 import me.jp.jpvaults.storage.YamlVaultStorage;
+import me.jp.jpvaults.util.Components;
+import me.jp.jpvaults.util.MessageFormat;
+import me.jp.jpvaults.util.Schedulers;
 import me.jp.jpvaults.util.UiSound;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.sql.Driver;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -28,12 +35,16 @@ import java.util.List;
  *
  * Una sola build, sin NMS ni dependencias, compatible con Minecraft 1.8 hasta
  * la ultima version: se compila contra la API de Spigot 1.8.8 y solo se usan
- * metodos estables en todas las versiones; lo especifico de versiones nuevas
- * (como la tecla F de 1.9+) se registra por reflexion si existe.
+ * metodos estables en todas las versiones. Lo especifico de versiones nuevas se
+ * detecta en tiempo de ejecucion:
  *
- * Los datos se guardan en YAML (por defecto) o en una base de datos por JDBC
- * (storage.type: mysql). El driver JDBC lo pone el servidor o lo elige el
- * administrador; el plugin solo usa java.sql.
+ *  - la tecla F (1.9+) se registra por reflexion si el evento existe;
+ *  - Adventure/MiniMessage se usa si el servidor lo trae, y si no, colores
+ *    legacy (ver {@link Components});
+ *  - los items se pueden guardar como NBT (Paper 1.20.5+) o con la
+ *    serializacion de Bukkit (ver {@link VaultCodec});
+ *  - los planificadores de Paper/Folia se usan si existen (ver
+ *    {@link Schedulers}).
  */
 public final class JPPlayerVaults extends JavaPlugin {
 
@@ -50,13 +61,17 @@ public final class JPPlayerVaults extends JavaPlugin {
     private MessageManager messages;
     private VaultManager vaultManager;
     private VaultStorage storage;
-    private BukkitTask autosaveTask;
+    private Schedulers.Task autosaveTask;
+    private URLClassLoader driverLoader;
 
     // Valores de config.yml (se releen en /pv reload).
     private String language;
+    private MessageFormat messageFormat = MessageFormat.AUTO;
     private int vaultSize;
     private int defaultAmount;
     private int maxAmount;
+    private int titleMaxLength = 32;
+    private boolean pickerEnabled = true;
     private String storageFolder;
     private int autosaveSeconds;
     private boolean soundsEnabled;
@@ -64,6 +79,9 @@ public final class JPPlayerVaults extends JavaPlugin {
     private float soundPitch;
     private StorageType configuredStorage = StorageType.YAML;
     private SqlSettings sqlSettings;
+    private String driverJar = "";
+    private boolean preferNbtItems = true;
+    private boolean compactYaml = false;
 
     // Estado real: puede ser YAML aunque la config pida MySQL si la base de
     // datos no responde (el plugin sigue funcionando y avisa por consola).
@@ -76,7 +94,7 @@ public final class JPPlayerVaults extends JavaPlugin {
 
         applyConfig();
         messages = new MessageManager(this);
-        messages.load(language);
+        messages.load(language, messageFormat);
 
         storage = createStorage();
         vaultManager = new VaultManager(this, storage);
@@ -101,16 +119,27 @@ public final class JPPlayerVaults extends JavaPlugin {
 
         startAutosave();
         getLogger().info("Enabled: " + vaultSize + " slots per vault, up to " + maxAmount
-                + " vaults per rank, language '" + messages.getLanguage() + "', storage: " + storage.describe() + ".");
+                + " vaults per rank, language '" + messages.getLanguage() + "', text: " + messages.describeText()
+                + ", storage: " + storage.describe() + ".");
+        if (Schedulers.folia()) {
+            getLogger().info("Folia detected: using region schedulers for per-player work.");
+        }
     }
 
     @Override
     public void onDisable() {
         if (vaultManager != null) {
-            // Cierra las vistas abiertas (anti-dupe tras /reload), guarda todo
-            // y espera a que terminen las escrituras pendientes.
+            // Guarda todo y espera a que terminen las escrituras pendientes.
             vaultManager.shutdown();
             getLogger().info("Disabled: open vaults were saved and written to disk.");
+        }
+        if (driverLoader != null) {
+            try {
+                driverLoader.close();
+            } catch (IOException ignored) {
+                // Nada que hacer al apagar.
+            }
+            driverLoader = null;
         }
     }
 
@@ -118,7 +147,7 @@ public final class JPPlayerVaults extends JavaPlugin {
     public void reloadPlugin() {
         reloadConfig();
         applyConfig();
-        messages.load(language);
+        messages.load(language, messageFormat);
         startAutosave();
         if (configuredStorage != activeStorage) {
             getLogger().warning("storage.type is now '" + configuredStorage.getKey() + "' but the plugin is using '"
@@ -186,6 +215,24 @@ public final class JPPlayerVaults extends JavaPlugin {
         return autosaveSeconds;
     }
 
+    /** Limite de caracteres visibles del titulo; 0 = sin limite. */
+    public int getTitleMaxLength() {
+        return titleMaxLength;
+    }
+
+    /** True si /pv sin argumentos abre el menu selector. */
+    public boolean isPickerEnabled() {
+        return pickerEnabled;
+    }
+
+    /** Como se guardan los items, para logs e informes. */
+    public String getItemFormatName() {
+        if (activeStorage == StorageType.MYSQL) {
+            return VaultCodec.preferredFormatName(preferNbtItems);
+        }
+        return compactYaml ? VaultCodec.preferredFormatName(true) : "readable";
+    }
+
     // ------------------------------------------------------------- storage
 
     /**
@@ -197,50 +244,97 @@ public final class JPPlayerVaults extends JavaPlugin {
         if (configuredStorage == StorageType.MYSQL) {
             try {
                 Driver driver = loadDriver(sqlSettings);
-                SqlVaultStorage sql = new SqlVaultStorage(this, sqlSettings, driver);
+                SqlVaultStorage sql = new SqlVaultStorage(this, sqlSettings, driver, preferNbtItems);
                 activeStorage = StorageType.MYSQL;
                 return sql;
-            } catch (ReflectiveOperationException | SQLException | RuntimeException problem) {
+            } catch (ReflectiveOperationException | SQLException | IOException | RuntimeException problem) {
                 getLogger().severe("Could not open the database: " + problem.getMessage());
                 getLogger().severe("Falling back to YAML storage in '" + storageFolder + "'. Fix storage.mysql and "
                         + "restart; then run '/pv admin migrate' to copy those files into the database.");
             }
         }
         activeStorage = StorageType.YAML;
-        return new YamlVaultStorage(this, storageFolder);
+        return new YamlVaultStorage(this, storageFolder, compactYaml);
     }
 
-    /** Carga el driver JDBC pedido o, si no hay, el primero de los conocidos. */
-    private Driver loadDriver(SqlSettings settings) throws ReflectiveOperationException, SQLException {
+    /**
+     * Carga el driver JDBC: primero del classpath del servidor (Spigot y Paper
+     * traen MySQL Connector/J) y, si no esta, de los .jar que haya en
+     * plugins/JPPlayerVaults/lib/ o en la ruta de storage.mysql.driver-jar.
+     */
+    private Driver loadDriver(SqlSettings settings)
+            throws ReflectiveOperationException, SQLException, IOException {
         List<String> candidates = new ArrayList<>();
         if (!settings.getDriverClass().isEmpty()) {
             candidates.add(settings.getDriverClass());
         } else {
             Collections.addAll(candidates, DEFAULT_DRIVERS);
         }
-        ReflectiveOperationException lastFailure = null;
+
         for (String name : candidates) {
-            try {
-                Class<?> type = Class.forName(name);
-                Object instance = type.getDeclaredConstructor().newInstance();
-                if (instance instanceof Driver) {
-                    getLogger().info("Using JDBC driver " + name + ".");
-                    return (Driver) instance;
-                }
-            } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException
-                     | IllegalAccessException | java.lang.reflect.InvocationTargetException missing) {
-                lastFailure = missing;
+            Driver driver = instantiate(name, getClass().getClassLoader());
+            if (driver != null) {
+                getLogger().info("Using JDBC driver " + name + " from the server classpath.");
+                return driver;
             }
         }
-        String tried = settings.getDriverClass().isEmpty()
-                ? String.join(", ", candidates)
-                : settings.getDriverClass();
-        throw new SQLException("No JDBC driver available (tried " + tried + "). "
-                + "Set storage.mysql.driver-class to a driver present on the server.");
+
+        List<URL> jars = driverJars();
+        if (!jars.isEmpty()) {
+            driverLoader = new URLClassLoader(jars.toArray(new URL[0]), getClass().getClassLoader());
+            for (String name : candidates) {
+                Driver driver = instantiate(name, driverLoader);
+                if (driver != null) {
+                    getLogger().info("Using JDBC driver " + name + " from " + jars.size() + " jar(s) in lib/.");
+                    return driver;
+                }
+            }
+        }
+
+        throw new SQLException("No JDBC driver available (tried " + String.join(", ", candidates) + "). "
+                + "Spigot and Paper ship MySQL Connector/J; otherwise drop the driver .jar into "
+                + "plugins/JPPlayerVaults/lib/ or set storage.mysql.driver-class.");
+    }
+
+    private Driver instantiate(String className, ClassLoader loader) {
+        try {
+            Class<?> type = Class.forName(className, true, loader);
+            Object instance = type.getDeclaredConstructor().newInstance();
+            return instance instanceof Driver ? (Driver) instance : null;
+        } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | IllegalAccessException
+                 | java.lang.reflect.InvocationTargetException | LinkageError | RuntimeException missing) {
+            return null;
+        }
+    }
+
+    /** Jars de la carpeta lib/ mas el de storage.mysql.driver-jar, si existe. */
+    private List<URL> driverJars() throws IOException {
+        List<URL> jars = new ArrayList<>();
+        File folder = new File(getDataFolder(), "lib");
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".jar")) {
+                    jars.add(file.toURI().toURL());
+                }
+            }
+        }
+        if (driverJar != null && !driverJar.trim().isEmpty()) {
+            File extra = new File(driverJar.trim());
+            if (!extra.isAbsolute()) {
+                extra = new File(getDataFolder(), driverJar.trim());
+            }
+            if (extra.isFile()) {
+                jars.add(extra.toURI().toURL());
+            } else {
+                getLogger().warning("storage.mysql.driver-jar points to a file that does not exist: " + extra);
+            }
+        }
+        return jars;
     }
 
     private String storageSignature() {
-        return configuredStorage.getKey() + "|" + storageFolder + "|"
+        return configuredStorage.getKey() + "|" + storageFolder + "|" + compactYaml + "|" + preferNbtItems + "|"
                 + (sqlSettings == null ? "" : sqlSettings.describe());
     }
 
@@ -256,6 +350,15 @@ public final class JPPlayerVaults extends JavaPlugin {
 
         String configuredLanguage = getConfig().getString("language", MessageManager.DEFAULT_LANGUAGE);
         this.language = configuredLanguage == null ? MessageManager.DEFAULT_LANGUAGE : configuredLanguage;
+
+        String rawFormat = getConfig().getString("messages-format", MessageFormat.AUTO.getKey());
+        MessageFormat parsedFormat = MessageFormat.fromKey(rawFormat);
+        if (parsedFormat == null) {
+            getLogger().warning("messages-format='" + rawFormat + "' is not valid (legacy, minimessage or auto). "
+                    + "Using auto.");
+            parsedFormat = MessageFormat.AUTO;
+        }
+        this.messageFormat = parsedFormat;
 
         int rawSize = getConfig().getInt("vaults.size", 54);
         int size = Math.max(9, Math.min(54, rawSize));
@@ -280,6 +383,15 @@ public final class JPPlayerVaults extends JavaPlugin {
                     + ") is higher than vaults.max-amount (" + max + "); rank permissions will be capped at " + max + ".");
         }
 
+        int rawTitle = getConfig().getInt("vaults.title-max-length", 32);
+        this.titleMaxLength = Math.max(0, Math.min(256, rawTitle));
+        if (this.titleMaxLength != rawTitle) {
+            getLogger().warning("vaults.title-max-length=" + rawTitle + " is out of range (0-256). Using "
+                    + this.titleMaxLength + ".");
+        }
+
+        this.pickerEnabled = getConfig().getBoolean("vaults.picker", true);
+
         String rawType = getConfig().getString("storage.type", StorageType.YAML.getKey());
         StorageType parsed = StorageType.fromKey(rawType);
         if (parsed == null) {
@@ -293,6 +405,45 @@ public final class JPPlayerVaults extends JavaPlugin {
 
         this.autosaveSeconds = Math.max(0, getConfig().getInt("storage.autosave-seconds", 300));
         this.sqlSettings = readSqlSettings();
+
+        String rawItemFormat = getConfig().getString("storage.item-format", "auto");
+        if (rawItemFormat == null) {
+            rawItemFormat = "auto";
+        }
+        String itemFormat = rawItemFormat.trim().toLowerCase(java.util.Locale.ROOT);
+        if (itemFormat.equals("nbt")) {
+            this.preferNbtItems = true;
+        } else if (itemFormat.equals("bukkit")) {
+            this.preferNbtItems = false;
+        } else {
+            if (!itemFormat.equals("auto")) {
+                getLogger().warning("storage.item-format='" + rawItemFormat + "' is not valid (auto, bukkit or nbt). "
+                        + "Using auto.");
+            }
+            this.preferNbtItems = true; // auto: NBT donde se pueda
+        }
+        if (this.preferNbtItems && !VaultCodec.nbtAvailable()) {
+            if (itemFormat.equals("nbt")) {
+                getLogger().warning("storage.item-format: nbt was requested but this server has no NBT item API "
+                        + "(Paper 1.20.5+ is required); using the Bukkit format instead.");
+            }
+            this.preferNbtItems = false;
+        }
+
+        String rawYamlFormat = getConfig().getString("storage.yaml-format", "readable");
+        String yamlFormat = rawYamlFormat == null ? "readable" : rawYamlFormat.trim().toLowerCase(java.util.Locale.ROOT);
+        if (yamlFormat.equals("nbt") || yamlFormat.equals("compact")) {
+            this.compactYaml = true;
+        } else {
+            if (!yamlFormat.equals("readable")) {
+                getLogger().warning("storage.yaml-format='" + rawYamlFormat + "' is not valid (readable or nbt). "
+                        + "Using readable.");
+            }
+            this.compactYaml = false;
+        }
+
+        String configuredDriverJar = getConfig().getString("storage.mysql.driver-jar", "");
+        this.driverJar = configuredDriverJar == null ? "" : configuredDriverJar;
 
         this.soundsEnabled = getConfig().getBoolean("sounds.enabled", true);
         this.soundVolume = clampSound("sounds.volume", getConfig().getDouble("sounds.volume", 0.7D), 0.0D, 1.0D);
@@ -352,7 +503,7 @@ public final class JPPlayerVaults extends JavaPlugin {
         }
         if (autosaveSeconds > 0) {
             long ticks = autosaveSeconds * 20L;
-            autosaveTask = getServer().getScheduler().runTaskTimer(this, new Runnable() {
+            autosaveTask = Schedulers.runGlobalTimer(this, new Runnable() {
                 @Override
                 public void run() {
                     vaultManager.autosave();

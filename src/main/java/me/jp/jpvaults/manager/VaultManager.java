@@ -1,9 +1,12 @@
 package me.jp.jpvaults.manager;
 
 import me.jp.jpvaults.JPPlayerVaults;
+import me.jp.jpvaults.menu.PickerHolder;
 import me.jp.jpvaults.menu.VaultHolder;
 import me.jp.jpvaults.model.PlayerVaultData;
 import me.jp.jpvaults.storage.VaultStorage;
+import me.jp.jpvaults.util.Components;
+import me.jp.jpvaults.util.Schedulers;
 import me.jp.jpvaults.util.Text;
 import me.jp.jpvaults.util.UiSound;
 import org.bukkit.Bukkit;
@@ -12,9 +15,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,12 +39,6 @@ public final class VaultManager {
 
     /** Los rangos otorgan jpvaults.vaults.<n>; el plugin usa el numero mas alto. */
     public static final String VAULT_PERMISSION_PREFIX = "jpvaults.vaults.";
-
-    /**
-     * En 1.8-1.12 un titulo de inventario de mas de 32 caracteres rompe el
-     * cliente: se recorta para que una configuracion larga no kickee a nadie.
-     */
-    private static final int MAX_TITLE_LENGTH = 32;
 
     private final JPPlayerVaults plugin;
     private final VaultStorage storage;
@@ -84,12 +83,23 @@ public final class VaultManager {
      */
     public void closeStaleVaultViews() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            InventoryHolder holder = player.getOpenInventory().getTopInventory().getHolder();
-            if (holder != null && VaultHolder.class.getName().equals(holder.getClass().getName())) {
-                player.closeInventory();
-                plugin.getLogger().info("Closed a vault left open by a previous plugin session for "
-                        + player.getName() + " (anti-dupe guard).");
-            }
+            // En Folia el inventario de un jugador solo se toca en el hilo de su
+            // region, asi que la comprobacion tambien va ahi.
+            Schedulers.runForEntity(plugin, player, () -> closeStaleView(player));
+        }
+    }
+
+    private void closeStaleView(Player player) {
+        InventoryHolder holder = player.getOpenInventory().getTopInventory().getHolder();
+        if (holder == null) {
+            return;
+        }
+        boolean vault = VaultHolder.class.getName().equals(holder.getClass().getName());
+        boolean picker = PickerHolder.class.getName().equals(holder.getClass().getName());
+        if (vault || picker) {
+            player.closeInventory();
+            plugin.getLogger().info("Closed a " + (vault ? "vault" : "picker")
+                    + " left open by a previous plugin session for " + player.getName() + " (anti-dupe guard).");
         }
     }
 
@@ -110,17 +120,9 @@ public final class VaultManager {
         int size = plugin.getVaultSize();
         MessageManager messages = plugin.getMessages();
 
-        String title = messages.get(adminView ? "admin.vault-title" : "vault-title",
-                "number", String.valueOf(number), "player", ownerName == null ? "" : ownerName);
-        String safeTitle = Text.limitVisible(title, MAX_TITLE_LENGTH);
-        if (!safeTitle.equals(title) && !titleLengthWarned) {
-            titleLengthWarned = true;
-            plugin.getLogger().warning("The inventory title is longer than " + MAX_TITLE_LENGTH
-                    + " visible characters and was shortened for compatibility with 1.8-1.12 clients.");
-        }
-
         VaultHolder holder = new VaultHolder(owner, number, adminView);
-        Inventory inventory = Bukkit.createInventory(holder, size, safeTitle);
+        Inventory inventory = createInventory(holder, size, adminView ? "admin.vault-title" : "vault-title",
+                "number", String.valueOf(number), "player", ownerName == null ? "" : ownerName);
         holder.setInventory(inventory);
         inventory.setContents(viewOf(data, number, size));
 
@@ -186,10 +188,16 @@ public final class VaultManager {
      */
     public void shutdown() {
         shuttingDown = true;
-        for (UUID viewerId : new ArrayList<>(open.keySet())) {
-            Player player = Bukkit.getPlayer(viewerId);
-            if (player != null && player.getOpenInventory().getTopInventory().getHolder() instanceof VaultHolder) {
-                player.closeInventory(); // dispara InventoryCloseEvent -> guarda
+        if (!Schedulers.folia()) {
+            // Cerrar las vistas dispara el guardado normal. En Folia no se puede
+            // tocar el inventario de otra region desde el hilo global, asi que
+            // alli se guarda directamente (abajo) y el enable siguiente cierra
+            // las vistas que hayan quedado.
+            for (UUID viewerId : new ArrayList<>(open.keySet())) {
+                Player player = Bukkit.getPlayer(viewerId);
+                if (player != null && player.getOpenInventory().getTopInventory().getHolder() instanceof VaultHolder) {
+                    player.closeInventory(); // dispara InventoryCloseEvent -> guarda
+                }
             }
         }
         // Vistas sin evento de cierre (jugador ya desconectado, etc.).
@@ -298,7 +306,96 @@ public final class VaultManager {
         return false;
     }
 
+    // ------------------------------------------------------------ menu selector
+
+    /** Abre el selector de vaults que usa /pv sin argumentos. */
+    public void openPicker(Player player) {
+        int available = availableVaults(player);
+        int size = Math.min(54, Math.max(9, ((Math.max(1, available) + 8) / 9) * 9));
+        PickerHolder holder = new PickerHolder(player.getUniqueId(), Math.min(available, size));
+        Inventory inventory = createInventory(holder, size, "picker.title", "available", String.valueOf(available));
+        holder.setInventory(inventory);
+        for (int number = 1; number <= holder.getAvailable(); number++) {
+            inventory.setItem(number - 1, pickerItem(player, number));
+        }
+        player.openInventory(inventory);
+        plugin.playUiSound(player, UiSound.OPEN);
+        if (available < 1) {
+            plugin.getMessages().send(player, "command.no-vaults");
+        }
+    }
+
+    /** Abre el vault que corresponde al slot pulsado del selector. */
+    public boolean openFromPicker(Player player, PickerHolder holder, int slot) {
+        int number = holder.vaultAt(slot);
+        if (number < 1) {
+            return false;
+        }
+        openVault(player, number);
+        return true;
+    }
+
+    private ItemStack pickerItem(Player player, int number) {
+        MessageManager messages = plugin.getMessages();
+        String placeholderNumber = String.valueOf(number);
+        String placeholderItems = String.valueOf(countItems(player.getUniqueId(), number));
+
+        ItemStack item = new ItemStack(Material.ENDER_CHEST);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        // Con Adventure el nombre y el lore van como Component (y admiten
+        // MiniMessage); si no, texto legacy de toda la vida.
+        if (!Components.applyDisplayName(meta, messages.component("picker.vault-name",
+                "number", placeholderNumber, "items", placeholderItems))) {
+            meta.setDisplayName(messages.get("picker.vault-name",
+                    "number", placeholderNumber, "items", placeholderItems));
+        }
+        if (!Components.applyLore(meta, messages.componentList("picker.vault-lore",
+                "number", placeholderNumber, "items", placeholderItems))) {
+            meta.setLore(messages.getList("picker.vault-lore",
+                    "number", placeholderNumber, "items", placeholderItems));
+        }
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** Cuantos objetos guardados tiene un vault concreto (lo usa el selector). */
+    public int countItems(UUID owner, int number) {
+        return countItems(data(owner, null).getVaultContents(number));
+    }
+
     // ------------------------------------------------------------- internals
+
+    /**
+     * Crea el inventario con el titulo que diga el mensaje. Si el servidor
+     * soporta Component se usa ese camino (y el limite de caracteres solo se
+     * aplica si el administrador lo dejo puesto), y si no, texto legacy
+     * recortado, que es lo que evita que un titulo largo tumbe a los clientes
+     * de 1.8-1.12.
+     */
+    private Inventory createInventory(InventoryHolder holder, int size, String titleKey, String... placeholders) {
+        MessageManager messages = plugin.getMessages();
+        int limit = plugin.getTitleMaxLength();
+        Object component = messages.component(titleKey, placeholders);
+        if (component != null) {
+            String plain = Components.toPlain(component);
+            if (limit <= 0 || plain.length() <= limit) {
+                Inventory modern = Components.createInventory(holder, size, component);
+                if (modern != null) {
+                    return modern;
+                }
+            } else if (!titleLengthWarned) {
+                titleLengthWarned = true;
+                plugin.getLogger().warning("The inventory title is longer than vaults.title-max-length (" + limit
+                        + " visible characters); using the shortened legacy title. Set it to 0 if every client "
+                        + "on your server is modern.");
+            }
+        }
+        String title = messages.get(titleKey, placeholders);
+        return Bukkit.createInventory(holder, size, Text.limitVisible(title, limit <= 0 ? Integer.MAX_VALUE : limit));
+    }
 
     /**
      * Guarda el vault que ya estuviera abierto antes de mostrar otro. El

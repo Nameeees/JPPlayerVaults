@@ -65,13 +65,21 @@ public final class SqlVaultStorage implements VaultStorage {
     private final String playersTable;
     private final String vaultsTable;
     private final String blobType;
+    private final boolean preferNbt;
 
     private boolean closed;
 
+    /** Usa NBT para los items si el servidor lo ofrece (Paper 1.20.5+). */
     public SqlVaultStorage(JPPlayerVaults plugin, SqlSettings settings, Driver driver) throws SQLException {
+        this(plugin, settings, driver, VaultCodec.nbtAvailable());
+    }
+
+    public SqlVaultStorage(JPPlayerVaults plugin, SqlSettings settings, Driver driver, boolean preferNbt)
+            throws SQLException {
         this.plugin = plugin;
         this.settings = settings;
         this.driver = driver;
+        this.preferNbt = preferNbt;
         this.playersTable = settings.getTablePrefix() + "players";
         this.vaultsTable = settings.getTablePrefix() + "vaults";
         this.blobType = createSchema();
@@ -83,7 +91,8 @@ public final class SqlVaultStorage implements VaultStorage {
                 return thread;
             }
         });
-        plugin.getLogger().info("SQL storage ready: " + settings.describe() + " using " + blobType + ".");
+        plugin.getLogger().info("SQL storage ready: " + settings.describe() + " using " + blobType
+                + ", items as " + VaultCodec.preferredFormatName(preferNbt) + ".");
     }
 
     // ------------------------------------------------------------------ schema
@@ -190,7 +199,7 @@ public final class SqlVaultStorage implements VaultStorage {
         final Map<Integer, byte[]> encoded = new LinkedHashMap<>();
         try {
             for (Map.Entry<Integer, ItemStack[]> entry : data.getVaults().entrySet()) {
-                encoded.put(entry.getKey(), VaultCodec.encode(entry.getValue()));
+                encoded.put(entry.getKey(), VaultCodec.encode(entry.getValue(), preferNbt));
             }
         } catch (IOException error) {
             plugin.getLogger().log(Level.SEVERE, "Could not serialize the vaults of " + owner, error);

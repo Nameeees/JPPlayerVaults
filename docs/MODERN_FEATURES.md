@@ -7,6 +7,18 @@ The point of this document is that a plugin which only *runs* on modern versions
 a plugin that takes advantage of them. Everything below was checked against the real API jars, not
 from memory.
 
+## Status after 1.2.0
+
+| Item | Priority then | Status |
+| --- | --- | --- |
+| NBT item storage (`serializeAsBytes` / `serializeItemsAsBytes`) | P1 | **Done.** `storage.item-format: auto \| nbt \| bukkit`, format byte per blob, old blobs still load. The YAML backend has `storage.yaml-format: readable \| nbt`. |
+| `getOfflinePlayerIfCached` for admin lookups | P1 | **Done.** Used when present, with the cache scan as fallback. |
+| Paper `libraries:` for the JDBC driver | P2 | **Superseded.** Loading any `.jar` from `plugins/JPPlayerVaults/lib/` solves the same problem without making every start need internet. The `libraries:` line is documented, commented out, in `plugin.yml`. |
+| Adventure components + MiniMessage | P2 | **Done.** `messages-format: legacy \| minimessage \| auto`; chat, action bars, inventory titles and the picker item names/lore. |
+| Native dialogs as a vault picker | P3 | **Replaced by an inventory picker.** The dialog APIs differ per platform (`net.md_5.bungee.api.dialog.Dialog` on Spigot, `io.papermc.paper.dialog.Dialog` + Adventure's `showDialog` on Paper) and the Spigot route needs the `bungeecord-chat` artifact this project deliberately does not compile against. A menu works on every version instead. |
+| Folia support | P3 | **Implemented, not declared.** The schedulers are region-aware (`GlobalRegionScheduler`, `EntityScheduler`), but the plugin does not claim `folia-supported: true` until it is tested on a real Folia server. |
+| PersistentDataContainer tagging | P4 | **Not done, on purpose.** It only pays off with a concrete feature that needs it; there is none yet. |
+
 ## 0. How the facts were verified
 
 | Artifact | Version |

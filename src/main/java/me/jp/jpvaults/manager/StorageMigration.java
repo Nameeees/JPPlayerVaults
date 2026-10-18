@@ -4,10 +4,10 @@ import me.jp.jpvaults.JPPlayerVaults;
 import me.jp.jpvaults.model.PlayerVaultData;
 import me.jp.jpvaults.storage.VaultStorage;
 import me.jp.jpvaults.storage.YamlVaultStorage;
+import me.jp.jpvaults.util.Schedulers;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +38,7 @@ public final class StorageMigration {
     private final List<UUID> pending;
     private final boolean overwrite;
 
-    private BukkitTask task;
+    private Schedulers.Task task;
     private int index;
     private int migrated;
     private int skipped;
@@ -82,7 +82,7 @@ public final class StorageMigration {
             finish();
             return;
         }
-        task = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
+        task = Schedulers.runGlobalTimer(plugin, new Runnable() {
             @Override
             public void run() {
                 tick();

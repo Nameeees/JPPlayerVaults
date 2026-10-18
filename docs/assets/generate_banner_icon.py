@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 BRAND = "JPPlayerVaults"
 TAGLINE = "Private player vaults for Minecraft 1.8 \u2192 latest"
 HIGHLIGHTS = "One jar  \u00b7  No dependencies  \u00b7  Rank-based  \u00b7  Anti-dupe"
-FOOTLINE = "v1.1.0  \u00b7  MIT  \u00b7  Spigot & Paper"
+FOOTLINE = "v1.2.0  \u00b7  MIT  \u00b7  Spigot & Paper"
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(OUT, exist_ok=True)

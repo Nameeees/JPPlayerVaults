@@ -9,11 +9,25 @@ import java.util.regex.Pattern;
  * Colores validos en todas las versiones: codigos legacy con & siempre y,
  * ademas, &#RRGGBB (visible a partir de 1.16; las versiones anteriores lo
  * muestran como texto, por eso messages.yml avisa).
+ *
+ * En servidores con Adventure (Paper y forks modernos) los mensajes pueden
+ * usar ademas MiniMessage (etiquetas como la de color rojo, hex, degradados,
+ * click y hover). El parseo real lo hace {@link Components}; aqui solo se
+ * detecta si un texto parece MiniMessage.
  */
 public final class Text {
 
     private static final Pattern HEX = Pattern.compile("&#([0-9a-fA-F]{6})");
     private static final char COLOR_CHAR = '\u00A7';
+
+    /**
+     * Tags que MiniMessage reconoce de verdad. Deliberadamente estricto: asi
+     * textos como los placeholders de la ayuda (jugador, numero) no se
+     * confunden con etiquetas de color; y si alguna se colara, el parseo
+     * fallaria y se usaria el texto legacy, sin romper nada.
+     */
+    private static final Pattern MINI_TAG = Pattern.compile(
+            "</?(?:[a-z_]+(?::[^<>{}\\s]+)?|#[0-9a-fA-F]{6})>");
 
     private Text() {
     }
@@ -28,6 +42,46 @@ public final class Text {
     /** True si el texto no tiene contenido visible (vacio o solo colores/espacios). */
     public static boolean isBlank(String text) {
         return text == null || ChatColor.stripColor(text).trim().isEmpty();
+    }
+
+    /** True si el texto parece usar etiquetas de MiniMessage. */
+    public static boolean hasMiniMessageTags(String text) {
+        return text != null && MINI_TAG.matcher(text).find();
+    }
+
+    /**
+     * True si el texto trae codigos legacy (&a, &l, &#RRGGBB). Se usa para no
+     * confundir un mensaje legacy con uno de MiniMessage: en 'auto' un texto
+     * con & se interpreta siempre como legacy, y asi un placeholder como
+     * {@code <number>} en la ayuda no puede romper el color.
+     */
+    public static boolean hasLegacyCodes(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (int index = 0; index + 1 < text.length(); index++) {
+            if (text.charAt(index) != '&') {
+                continue;
+            }
+            char next = Character.toLowerCase(text.charAt(index + 1));
+            if ((next >= '0' && next <= '9') || (next >= 'a' && next <= 'f')
+                    || (next >= 'k' && next <= 'o') || next == 'r' || next == '#') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Quita las etiquetas de MiniMessage: se usa cuando el servidor no tiene
+     * Adventure y el administrador configuro MiniMessage igualmente, para que
+     * el jugador lea el texto sin etiquetas raras en vez de nada.
+     */
+    public static String stripMiniMessageTags(String text) {
+        if (text == null) {
+            return "";
+        }
+        return MINI_TAG.matcher(text).replaceAll("");
     }
 
     /**

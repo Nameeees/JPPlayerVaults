@@ -7,6 +7,15 @@
 #  Messages without visible content (empty or colors only) are
 #  not sent (useful: leave 'opened' as "" to keep chat clean).
 #  Hex &#RRGGBB only shows on 1.16+ (older versions ignore it).
+#
+#  Modern colours (Paper/Adventure, 1.16+): set
+#  messages-format: auto or minimessage in config.yml and any
+#  message written with MiniMessage tags is sent as a Component.
+#  Examples:
+#    vault-title: '<gradient:#2ec4b6:#12727f><bold>Vault</bold></gradient> <gray>#{number}'
+#    command.help: '<gray>Open <click:run_command:''/pv 1''><aqua>/pv 1</aqua></click></gray>'
+#    locked: '<red>Vault <white>#{number}</white> is locked.</red> <hover:show_text:''Ask a rank upgrade''><gray>?</gray></hover>'
+#  With 'auto', messages that use & keep working exactly as before.
 # ============================================================
 
 config-version: 1
@@ -16,6 +25,14 @@ prefix: "&8[&a&lVaults&8] &7» "
 
 # Inventory title when a vault opens (max 32 visible chars).
 vault-title: "&8» &a&lVault &f#{number} &8«"
+
+# Menu opened by /pv without arguments (config: vaults.picker).
+picker:
+  title: "&8» &a&lVaults &8« &7({available})"
+  vault-name: "&a&lVault &f#{number}"
+  vault-lore:
+    - "&7Items stored: &f{items}"
+    - "&8Click to open"
 
 command:
   # /pv (no arguments) and /pv help.

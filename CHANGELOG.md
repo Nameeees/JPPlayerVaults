@@ -4,6 +4,54 @@ All notable changes to JPPlayerVaults are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-18
+
+Modern-version features: the plugin now takes advantage of what new servers offer while keeping the
+same jar working on 1.8.
+
+### Added
+
+- **Vault picker**: `/pv` without arguments opens a menu with one icon per vault (item count in the
+  lore). `/pv 3` opens a specific vault as always and `/pv help` shows the text help;
+  `vaults.picker: false` restores the old behaviour.
+- **MiniMessage colours** (`messages-format: auto | legacy | minimessage`): on servers with
+  Adventure (Paper and its forks) a message written with tags such as `<gradient:#2ec4b6:#12727f>`,
+  `<#ff8800>`, `<click:run_command:'/pv 1'>` or `<hover:show_text:'...'>` is sent as a Component.
+  It applies to chat, action bars, inventory titles and the picker item names/lore. `auto` is the
+  default: messages that use `&` keep working exactly as before, on every version.
+- **NBT item storage** for the SQL backend (`storage.item-format: auto | nbt | bukkit`). On Paper
+  1.20.5+ vaults are stored with `ItemStack.serializeItemsAsBytes`, which Paper documents as *safer
+  for data migrations* than Bukkit's own serialization, and which keeps slot order and gaps by
+  design. Every blob records its format, so data written by 1.0.0-1.1.0 still loads.
+- `storage.yaml-format: readable | nbt`: the YAML backend can store each vault as Base64 NBT instead
+  of hand-editable slots (readable stays the default).
+- `storage.mysql.driver-jar` and automatic loading of any `.jar` placed in
+  `plugins/JPPlayerVaults/lib/`: the database backend no longer depends on the server shipping the
+  JDBC driver. (`plugin.yml` documents Paper's `libraries:` as an alternative, commented out because
+  it makes every server start need internet.)
+- `vaults.title-max-length` (default 32, `0` = no limit): with Components available the 1.8-1.12
+  title cap can be lifted.
+- Paper/Folia scheduler support: the autosave and the migration use `GlobalRegionScheduler` when it
+  exists, and anything that touches a player (closing a vault, saving it) is scheduled on that
+  player's region thread via `EntityScheduler`.
+- `/pv admin` looks names up with Paper's `getOfflinePlayerIfCached` instead of walking the whole
+  player cache.
+
+### Changed
+
+- Messages are only sent as Components when the message actually uses MiniMessage; legacy messages
+  keep the plain string path, so nothing about existing texts changes.
+- The integration harness grew to cover the new surface: **102 checks on Paper 26.3** and **64 on
+  Paper 1.8.8**, including an NBT round-trip, the compatibility of pre-1.2.0 blobs, MiniMessage in
+  both modes, the picker and the schedulers.
+
+### Notes
+
+- Folia scheduling is implemented (region-aware), but the plugin does **not** declare
+  `folia-supported: true` yet because it has not been tested on a real Folia server.
+- On a server without Adventure the MiniMessage tags of a message are stripped so the text stays
+  readable, and a warning is logged once.
+
 ## [1.1.0] - 2026-10-18
 
 Database storage and administrator tools.

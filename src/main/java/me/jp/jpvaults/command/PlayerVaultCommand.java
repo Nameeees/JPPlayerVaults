@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.logging.Level;
+import java.lang.reflect.Method;
 
 /**
  * Comando /pv: abre el vault del jugador, gestiona /pv reload y los
@@ -45,6 +46,9 @@ public final class PlayerVaultCommand implements CommandExecutor, TabCompleter {
     private static final String[] ADMIN_SUBCOMMANDS = {"open", "info", "delete", "migrate"};
 
     private final JPPlayerVaults plugin;
+    /** Bukkit.getOfflinePlayerIfCached, resuelto una sola vez (Paper). */
+    private Method offlineLookup;
+    private boolean offlineLookupResolved;
 
     public PlayerVaultCommand(JPPlayerVaults plugin) {
         this.plugin = plugin;
@@ -76,7 +80,24 @@ public final class PlayerVaultCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
+        if (args.length == 0) {
+            // Sin argumentos: menu selector (si esta activado) o la ayuda.
+            if (plugin.isPickerEnabled() && plugin.getVaultManager().availableVaults(player) > 0) {
+                try {
+                    plugin.getVaultManager().openPicker(player);
+                } catch (StorageException failure) {
+                    messages.send(player, "command.storage-error");
+                    plugin.getLogger().log(Level.SEVERE,
+                            "Could not open the vault picker of " + player.getName(), failure);
+                }
+                return true;
+            }
+            messages.sendList(player, "command.help",
+                    "available", String.valueOf(plugin.getVaultManager().availableVaults(player)));
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("help")) {
             messages.sendList(player, "command.help",
                     "available", String.valueOf(plugin.getVaultManager().availableVaults(player)));
             return true;
@@ -367,8 +388,9 @@ public final class PlayerVaultCommand implements CommandExecutor, TabCompleter {
     /**
      * Busca a un jugador por nombre o UUID sin consultar a Mojang: conectados
      * primero y, si no, la cache de jugadores del servidor (los que ya han
-     * jugado). El UUID sirve para administrar cuentas que ya no estan en la
-     * cache, copiandolo de los logs o de la base de datos.
+     * jugado). En Paper se usa getOfflinePlayerIfCached, que es O(1) y no
+     * bloquea; en el resto se recorre la cache, que es lo unico disponible.
+     * El UUID sirve para administrar cuentas que ya no estan en la cache.
      */
     private Target resolve(String nameOrId) {
         UUID parsed = parseUuid(nameOrId);
@@ -381,6 +403,11 @@ public final class PlayerVaultCommand implements CommandExecutor, TabCompleter {
         if (online != null) {
             return new Target(online.getUniqueId(), online.getName(), true);
         }
+        OfflinePlayer cachedPlayer = cachedOfflinePlayer(nameOrId);
+        if (cachedPlayer != null) {
+            String name = cachedPlayer.getName();
+            return new Target(cachedPlayer.getUniqueId(), name == null ? nameOrId : name, cachedPlayer.isOnline());
+        }
         for (OfflinePlayer cached : Bukkit.getOfflinePlayers()) {
             String cachedName = cached.getName();
             if (cachedName != null && cachedName.equalsIgnoreCase(nameOrId)) {
@@ -388,6 +415,26 @@ public final class PlayerVaultCommand implements CommandExecutor, TabCompleter {
             }
         }
         return null;
+    }
+
+    /** Bukkit.getOfflinePlayerIfCached por reflexion (Paper 1.16.5+). */
+    private OfflinePlayer cachedOfflinePlayer(String name) {
+        if (!offlineLookupResolved) {
+            offlineLookupResolved = true;
+            try {
+                offlineLookup = Bukkit.class.getMethod("getOfflinePlayerIfCached", String.class);
+            } catch (NoSuchMethodException notModern) {
+                offlineLookup = null;
+            }
+        }
+        if (offlineLookup == null) {
+            return null;
+        }
+        try {
+            return (OfflinePlayer) offlineLookup.invoke(null, name);
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            return null;
+        }
     }
 
     private UUID parseUuid(String raw) {

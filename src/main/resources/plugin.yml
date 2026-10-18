@@ -11,6 +11,14 @@ api-version: '1.13'
 authors: [JP]
 description: Private per-player vaults for Minecraft 1.8 to the latest version.
 
+# Paper can download the JDBC driver for the database backend for you.
+# It is commented out on purpose: with 'libraries' every server start needs
+# internet in order to load the plugin, so the safer route is dropping the
+# driver jar into plugins/JPPlayerVaults/lib/ (see config.yml).
+# Uncomment and rebuild if you prefer Paper to fetch it:
+# libraries:
+#   - com.mysql:mysql-connector-j:8.0.33
+
 commands:
   pv:
     description: Open your private vaults.

@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ------------------------------------------------------------------ BRAND
 BRAND = "JPPlayerVaults"
-FOOTLINE = "JPPlayerVaults  \u00b7  v1.1.0  \u00b7  MIT  \u00b7  Spigot & Paper"
+FOOTLINE = "JPPlayerVaults  \u00b7  v1.2.0  \u00b7  MIT  \u00b7  Spigot & Paper"
 SERIES = "1.8 \u2192 26.3"
 
 OUT = os.path.dirname(os.path.abspath(__file__))
@@ -215,14 +215,14 @@ def ic_ghost(draw, cx, cy, s):
 
 def features():
     image, draw = base("What you get",
-                       "Private, rank-based vaults, two storage backends and admin tools.")
+                       "Private, rank-based vaults that keep working as Minecraft moves on.")
     cards = [
         (ic_jar, "One jar, 1.8 \u2192 latest", "The same build runs on Spigot, Paper and their forks."),
         (ic_no_deps, "No dependencies", "No Vault, no ProtocolLib, no NMS, nothing shaded."),
         (ic_rank, "Ranks decide", "The highest jpvaults.vaults.N the player has wins."),
         (ic_shield, "Built to protect items", "Durable saves, atomic writes, Q and F guarded."),
-        (ic_doc, "YAML or a database", "Readable files by default, MySQL over JDBC if you prefer."),
-        (ic_globe, "Admin tools included", "Open, inspect and wipe vaults; English and Spanish."),
+        (ic_doc, "Safe across updates", "NBT storage on modern Paper, Bukkit format anywhere else."),
+        (ic_ghost, "Tools and a picker", "/pv shows a menu per vault, plus /pv admin commands."),
     ]
     x0, y0, cw, ch, gap = 80, 226, 360, 196, 40
     for index, (icon, title, body) in enumerate(cards):
@@ -337,7 +337,7 @@ def setup():
     steps = [
         (ic_download, "1", "Install", "Put the jar in plugins/ and start the server."),
         (ic_key, "2", "Grant the ranks", "Set jpvaults.vaults.N on each group with LuckPerms or similar."),
-        (ic_terminal, "3", "Play", "Players run /pv 1, /pv 2\u2026 and their vault opens like a chest."),
+        (ic_terminal, "3", "Play", "Players run /pv and pick a vault from the menu."),
     ]
     x0, y0, cw, ch, gap = 80, 238, 360, 250, 40
     for index, (icon, number, title, body) in enumerate(steps):
@@ -354,7 +354,7 @@ def setup():
             draw.text((x + 36, yy), line, font=font(REGULAR, 19), fill=MUTED)
             yy += 28
 
-    draw.text((80, 546), "Configuration: vaults.size, default-amount, max-amount, storage.type (yaml or mysql), autosave and messages.",
+    draw.text((80, 546), "Configuration: vaults.size, default-amount, max-amount, picker, storage.type, item-format and messages-format.",
               font=font(REGULAR, 21), fill=MUTED)
     x = 80
     for text in ("config.yml", "messages_en.yml", "messages_es.yml", "/pv reload", "/pv admin \u2026"):
@@ -370,8 +370,8 @@ def commands():
     image, draw = base("Commands & messages",
                        "Four command groups and one prefix; every visible text lives in a language file.")
     rows = [
-        ("/pv <number>", "Opens your private vault with that number.", "jpvaults.use"),
-        ("/pv  or  /pv help", "Shows the help and how many vaults you have.", "jpvaults.use"),
+        ("/pv", "Opens the vault picker: one icon per vault.", "jpvaults.use"),
+        ("/pv <number>", "Opens that vault directly, as always.", "jpvaults.use"),
         ("/pv reload", "Reloads config.yml and the messages in place.", "jpvaults.reload"),
         ("/pv admin \u2026", "Open, inspect, wipe and migrate (administrators).", "jpvaults.admin"),
     ]
@@ -427,9 +427,82 @@ def commands():
     print("commands.png")
 
 
+# ------------------------------------------------------------- 7. colours
+
+def colours():
+    image, draw = base("Colours that fit your server.",
+                       "One messages file: & codes on 1.8, MiniMessage on Paper. Nothing to rewrite.")
+
+    panels = [
+        (80, "Legacy  \u00b7  1.8 \u2192 latest", GREEN, [
+            ("vault-title: \"&8\u00bb &a&lVault &f#{number} &8\u00ab\"", MUTED),
+            ("opened: \"{prefix}&7Vault &f#{number}&7 opened.\"", MUTED),
+        ], [
+            ((150, 150, 150), "[Vaults] \u00bb ", (205, 213, 223), "Vault "),
+            ((120, 220, 150), "#1", (205, 213, 223), " opened."),
+        ], "Works everywhere, hex &#RRGGBB from 1.16."),
+        (660, "MiniMessage  \u00b7  Paper / Adventure", (126, 200, 255), [
+            ("vault-title: '<gradient:#2ec4b6:#12727f>", MUTED),
+            ("  <bold>Vault</bold></gradient> <gray>#{number}</gray>'", MUTED),
+        ], [
+            ((46, 196, 182), "Vault", (18, 114, 127), " "),
+            ((120, 200, 190), "#1", (150, 170, 190), "  opened"),
+        ], "Gradients, hex, hover and click, per message."),
+    ]
+
+    for x0, header, accent, yaml_lines, chat, note in panels:
+        cw, y0, ch = 540, 226, 268
+        draw.rounded_rectangle([x0, y0, x0 + cw, y0 + ch], radius=16, fill=CARD,
+                               outline=CARD_BORDER, width=2)
+        draw.rounded_rectangle([x0, y0, x0 + cw, y0 + 52], radius=16, fill=(21, 30, 45))
+        draw.rectangle([x0, y0 + 38, x0 + cw, y0 + 52], fill=(21, 30, 45))
+        draw.text((x0 + 24, y0 + 26), header, font=font(SEMI, 19), fill=accent, anchor="lm")
+
+        yy = y0 + 82
+        for line, color in yaml_lines:
+            draw.text((x0 + 24, yy), line, font=font(REGULAR, 17), fill=color)
+            yy += 28
+
+        draw.line([x0 + 24, yy + 8, x0 + cw - 24, yy + 8], fill=(38, 52, 74), width=2)
+
+        xx = x0 + 24
+        for prefix_color, prefix, body_color, body in chat:
+            draw.text((xx, yy + 32), prefix, font=font(REGULAR, 19), fill=prefix_color)
+            xx += draw.textlength(prefix, font=font(REGULAR, 19))
+            draw.text((xx, yy + 32), body, font=font(REGULAR, 19), fill=body_color)
+            xx += draw.textlength(body, font=font(REGULAR, 19))
+
+        draw.text((x0 + 24, y0 + ch - 34), note, font=font(REGULAR, 16), fill=DIM)
+
+    draw.text((80, 524), "The same file works on every version: pick how it is read in config.yml.",
+              font=font(REGULAR, 21), fill=MUTED)
+    x = 80
+    for text, outline, color in (
+            ("messages-format: auto", GREEN, GREEN),
+            ("legacy", (52, 70, 96), MUTED),
+            ("minimessage", (52, 70, 96), MUTED),
+            ("auto = only tagged messages", (52, 70, 96), MUTED)):
+        x += pill(draw, x, 562, text, outline=outline, color=color) + 16
+
+    notes = [
+        "auto  \u00b7  & codes stay legacy, a message you rewrite with tags is sent as a Component.",
+        "Fields: title, chat, action bar and item names/lore of the picker.",
+        "No Adventure on the server? The tags are stripped and the text is still readable.",
+    ]
+    yy = 622
+    for index, note in enumerate(notes):
+        draw.text((80, yy), note, font=font(SEMI if index == 0 else REGULAR, 16),
+                  fill=TEXT if index == 0 else DIM)
+        yy += 22
+
+    image.convert("RGB").save(os.path.join(OUT, "colours.png"), "PNG", optimize=True)
+    print("colours.png")
+
+
 features()
 versions()
 safety()
 permissions()
 setup()
 commands()
+colours()

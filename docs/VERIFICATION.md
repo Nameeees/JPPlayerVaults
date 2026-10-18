@@ -1,26 +1,26 @@
-# Verification record — JPPlayerVaults 1.1.0
+# Verification record — JPPlayerVaults 1.2.0
 
-This file records what was actually executed for the 1.1.0 release, on which software, and with
+This file records what was actually executed for the 1.2.0 release, on which software, and with
 which result. It is deliberately specific: claims on the SpigotMC page should be backed by one of
 the tests below or by a manual check from [QA_CHECKLIST.md](QA_CHECKLIST.md).
 
 - Date: 2026-10-18
 - Build host: Windows, Temurin JDK 21 (Maven 3.9.16)
-- Release artifact: `JPPlayerVaults-1.1.0.jar`, 68,758 bytes
-  SHA-256 `3b6d8f1dc7ad1bd6aa3ca5f4b2589cbb1b0918a58e37e72250e1e6954d2755cd`
-- Continuous integration: GitHub Actions on `Nameeees/JPPlayerVaults` — **success**
+- Release artifact: `JPPlayerVaults-1.2.0.jar`, 91,975 bytes (89.8 KB)
+  SHA-256 `949898703fbb4edd17e9cd4de9a12b2cd4ab957c77a6fc325528fa8fc7bf08c1`
+- Continuous integration: GitHub Actions on `Nameeees/JPPlayerVaults`
+- Test servers: Paper 1.8.8 build 445 (Temurin 8u504) and Paper 26.3 build 205 (Temurin 25.0.4.1)
 
 ## 1. Build verification
 
 | Check | Result |
 | --- | --- |
 | `mvn clean package` | BUILD SUCCESS |
-| `plugin.yml` version substituted from `pom.xml` | `version: 1.1.0` |
-| Jar contents | `config.yml`, `plugin.yml`, `messages_en.yml`, `messages_es.yml`, 17 plugin classes, no shaded libraries |
+| `plugin.yml` version substituted from `pom.xml` | `version: 1.2.0` |
 | Bytecode | `major version: 52` (Java 8) |
 | Reproducible build | Two consecutive clean builds produce the same SHA-256 |
-| Network/metrics code | No `bstats`, `mcstats`, `http://` or `https://` strings in any class |
-| Packaging | No embedded Maven descriptor, so editing `pom.xml` cannot change the released jar |
+| No shaded libraries | Neither Adventure, nor MiniMessage, nor a JDBC driver is inside the jar; everything modern is used through reflection when the server provides it |
+| `plugin.yml` `libraries:` | Present but commented out on purpose: enabling it would make every server start need internet |
 
 ## 2. Integration harness (real server)
 
@@ -28,52 +28,94 @@ the tests below or by a manual check from [QA_CHECKLIST.md](QA_CHECKLIST.md).
 and commands inside a running server, prints `CHECK OK` / `CHECK FAILED` per assertion and stops the
 server. It is not part of the release jar.
 
-What it covers:
+New in 1.2.0, on top of the 1.1.0 coverage (both backends, every command path, admin views):
 
-- **YAML backend**: 54-slot round-trip with stack amounts, non-ASCII display name and lore, last
-  slot, empty slots, independence between vault numbers, `deleteVault`, `knownOwners`, and a
-  corrupted file (backed up as `.bak` and refused instead of loading empty).
-- **SQL backend**: the same contract against an in-memory H2 database in MySQL mode, with the driver
-  passed as an object exactly like the plugin does with the driver that ships with the server. The
-  schema created is the production one (`MEDIUMBLOB`, portable `UPDATE`-then-`INSERT` upsert,
-  transactional delete + insert), so the statements MySQL will run are the ones under test.
-- **Command layer**: `/pv`, `/pv help`, `/pv 4` locked, `/pv abc`, `/pv reload`, and every
-  `/pv admin` path (info, info with a UUID, delete with and without `confirm`, open, migrate,
-  unknown subcommand, permission denied), including the messages each one produces.
-- **Admin views**: opening another player's vault tags the holder as an admin view, a second viewer
-  is refused while it is open, deleting an open vault is refused, and after closing, the stored item
-  count is correct and the delete empties the vault.
+- **Item format codec**: a Bukkit-format round-trip, an NBT round-trip (Paper 1.20.5+), the header
+  byte of each format, and — the one that matters — a **blob written without a header, as 1.0.0 and
+  1.1.0 wrote them, still loads**.
+- **Text utilities**: MiniMessage tag detection, legacy code detection, tag stripping for servers
+  without Adventure, and a title truncation that does not eat colour codes.
+- **Adventure detection**: which of `Component`, `MiniMessage` and `LegacyComponentSerializer` the
+  plugin can see, logged as one line.
+- **MiniMessage end to end**: with `messages-format: auto`, a message written with tags becomes a
+  Component and a message written with `&` does not (it keeps its colours); with
+  `messages-format: minimessage`, the tagged title becomes a Component that renders as plain text
+  without leaking tags, and the config is restored afterwards so the legacy path is verified to come
+  back.
+- **Vault picker**: `/pv` with no arguments opens the picker, it lists one icon per available vault,
+  and picking an icon opens that vault.
+- **Schedulers**: the timer abstraction returns a cancellable handle, the timer actually fires, and
+  cancelling it stops it. Folia is reported as absent on Paper.
 
 ### Paper 1.8.8 build 445 — Temurin 8u504
 
-Result: **PASS — 47 checks, 0 failures.**
+Result: **PASS — 64 checks, 0 failures.**
 
 The `Player` interface of the 1.8 API declares `getHealth()` with incompatible return types, so
-`java.lang.reflect.Proxy` cannot create a fake player and the player-driven checks are skipped on
-this version; everything else (both backends and all command paths through a `CommandSender`) runs.
+`java.lang.reflect.Proxy` cannot create a fake player: the player-driven checks (title, picker,
+admin views) are skipped here and run on the modern server instead. Everything else runs, including
+the codec checks with the NBT round-trip reported as skipped (the API does not exist on 1.8).
+
+```
+[17:09:43 INFO]: [JPPlayerVaults] Enabled: 54 slots per vault, up to 10 vaults per rank, language 'en', text: auto (legacy only), storage: YAML .../plugins/JPPlayerVaults/data.
+[17:09:44 INFO]: [VaultStorageHarness] PROBE: Adventure classes seen by the plugin: [Component missing] [MiniMessage missing] [LegacyComponentSerializer missing]
+[17:09:44 INFO]: [VaultStorageHarness] Codec: NBT item API NOT available (old server)
+[17:09:44 INFO]: [VaultStorageHarness] CHECK OK: Codec: data saved by 1.1.0 still loads
+[17:09:44 INFO]: [VaultStorageHarness] CHECK SKIP: the NBT round-trip needs Paper 1.20.5+
+[17:09:44 INFO]: [VaultStorageHarness] Text system: legacy only
+[17:09:49 INFO]: [VaultStorageHarness] HARNESS RESULT checks=64 failures=0
+[17:09:49 INFO]: [VaultStorageHarness] HARNESS PASS
+```
+
+This run also used the **`config.yml` left behind by 1.1.0** (without `messages-format`,
+`vaults.picker`, `item-format` or `yaml-format`), which is the upgrade path a real server follows:
+the plugin starts, applies the documented defaults and logs no warning.
 
 ### Paper 26.3 build 205 — Temurin 25.0.4.1
 
-Result: **PASS — 69 checks, 0 failures.** Same as above plus the player-driven checks: inventory
-title, admin view flag, second viewer refused and delete of an open vault refused.
+Result: **PASS — 102 checks, 0 failures.**
 
-Selected log lines (Paper 26.3):
+Server side:
 
 ```
-[15:45:43 INFO]: [JPPlayerVaults] SQL storage ready: jdbc:h2:mem:jpvaults_harness;MODE=MySQL;DB_CLOSE_DELAY=-1 (tablas 'test_players' y 'test_vaults') using MEDIUMBLOB.
-[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: SQL: all 54 slots round-trip
-[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: SQL: deleteVault reports success
-[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: /pv admin open <uuid> opens the vault of that player
-[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: a second viewer is refused while the vault is open
-[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: admin delete removes the vault
-[15:45:43 INFO]: [VaultStorageHarness] HARNESS RESULT checks=69 failures=0
-[15:45:43 INFO]: [VaultStorageHarness] HARNESS PASS
+[17:09:35 INFO]: [JPPlayerVaults] SQL storage ready: jdbc:h2:mem:jpvaults_harness;MODE=MySQL;DB_CLOSE_DELAY=-1 (tablas 'test_players' y 'test_vaults') using MEDIUMBLOB, items as nbt.
+[17:09:35 INFO]: [JPPlayerVaults] Enabled: 54 slots per vault, up to 10 vaults per rank, language 'en', text: auto (Adventure + MiniMessage), storage: YAML .../plugins/JPPlayerVaults/data.
 ```
+
+Selected harness lines:
+
+```
+[17:09:36 INFO]: [VaultStorageHarness] PROBE: Adventure classes seen by the plugin: Component MiniMessage LegacyComponentSerializer
+[17:09:36 INFO]: [VaultStorageHarness] Codec: NBT item API available
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: Codec: data saved by 1.1.0 still loads
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: Codec: nbt round-trip keeps all 54 slots
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: /pv without arguments opens the picker
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: picking an icon opens that vault
+[17:09:36 INFO]: [VaultStorageHarness] Text system: Adventure + MiniMessage
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: MiniMessage: in auto mode a tagged message becomes a Component
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: MiniMessage: in auto mode a legacy message stays as text
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: MiniMessage: in auto mode the legacy colours are still applied
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: MiniMessage: the Component renders as plain text
+[17:09:36 INFO]: [VaultStorageHarness] CHECK OK: MiniMessage: after restoring the config the legacy path is back
+[17:09:37 INFO]: [VaultStorageHarness] CHECK OK: Schedulers: a global timer fires
+[17:09:37 INFO]: [VaultStorageHarness] CHECK OK: Schedulers: cancelling stops the timer
+[17:09:37 INFO]: [VaultStorageHarness] HARNESS RESULT checks=102 failures=0
+[17:09:37 INFO]: [VaultStorageHarness] HARNESS PASS
+```
+
+Two things this run proves that are easy to get wrong, and did fail first:
+
+- Adventure 5 changed the API the plugin reflects on: `LegacyComponentSerializer.legacySection()`
+  returns the serializer itself (not a `Builder`), and `MiniMessage` has no single-argument
+  `deserialize(String)` — it is varargs `deserialize(String, TagResolver...)`. Both shapes are
+  handled now, and the harness fails loudly if a future server changes them again.
+- The NBT format returns empty slots as empty items instead of `null`, so the codec normalises them;
+  that is what makes "empty slot stays empty" pass for both backends.
 
 ## 3. Real client end-to-end (Paper 1.8.8)
 
-A headless Minecraft 1.8.8 client (mineflayer 4.39.0, offline mode, operator) performs the real
-player flow: open, put an item in, close, disconnect (which drops the plugin's cache) and reconnect.
+**Not re-run for 1.2.0**: the headless client (mineflayer) is not installed in this environment. It
+was run for 1.1.0 and passed:
 
 ```
 [BOT] spawned as TestBot
@@ -85,25 +127,31 @@ player flow: open, put an item in, close, disconnect (which drops the plugin's c
 [BOT] PASS
 ```
 
-Server side:
+What covers that path for 1.2.0:
 
-```
-[15:46:20 INFO]: [JPPlayerVaults] Enabled: 54 slots per vault, up to 10 vaults per rank, language 'en', storage: YAML .../plugins/JPPlayerVaults/data.
-[15:46:34 INFO]: [JPPlayerVaults] Disabled: open vaults were saved and written to disk.
-```
-
-The inventory title is decoded here; the headless client's console mangles non-ASCII characters when
-it prints the raw title.
+- The inventory creation moved into one helper (`VaultManager#createInventory`). On servers without
+  Adventure the helper calls exactly what the plugin called before (`Bukkit.createInventory` with
+  the legacy title truncated to `vaults.title-max-length`, 32 by default), and the harness verifies
+  on 26.3 that the title still shows the vault number.
+- The trajectory from the 1.1.0 run (open, put an item in, disconnect, reconnect and read it back
+  from disk) is untouched by this release: the storage codec keeps writing what it wrote before
+  unless `item-format: nbt` applies, and the harness re-verifies both codecs and the read-back.
+- Re-running the client test is a checklist item for the next release:
+  [QA_CHECKLIST.md](QA_CHECKLIST.md).
 
 ## 4. Not covered automatically
 
 - **A real MySQL/MariaDB server.** The SQL layer is exercised end to end against H2 in MySQL mode
   (same DDL, same statements, same pooling and codec), but the final acceptance on a live database —
-  credentials, the driver shipped by the server, network hiccups — is a manual check: see the SQL
-  rows in [QA_CHECKLIST.md](QA_CHECKLIST.md).
+  credentials, the driver shipped by the server or dropped in `lib/`, network hiccups — is a manual
+  check: see the SQL rows in [QA_CHECKLIST.md](QA_CHECKLIST.md).
+- **A real Folia server.** The region-aware schedulers are implemented and the abstraction is
+  verified, but Folia itself is not tested here, so the plugin does not declare
+  `folia-supported: true`.
+- **A real MiniMessage look.** The harness proves a tagged message becomes a Component with the right
+  plain text; how a gradient or a hover renders belongs to a client, and to the manual checklist.
 - Shift-click, drag, hotbar keys and the `Q` / `F` guards, which need a real client per version.
-- LuckPerms integration and rank changes at runtime.
-- Two or more players with vaults open at the same time under load.
+- LuckPerms integration, rank changes at runtime, and two or more players with vaults open under load.
 - Migrating a large YAML folder (thousands of players) on slow hardware.
 
 ## 5. How to reproduce
@@ -115,7 +163,7 @@ mvn clean package
 Then, in a test server folder (with the Java version that Minecraft release needs):
 
 ```
-plugins/JPPlayerVaults-1.1.0.jar
+plugins/JPPlayerVaults-1.2.0.jar
 plugins/VaultStorageHarness.jar        # built from testing/harness, with the H2 jar shaded in
 eula=true
 online-mode=false
@@ -126,10 +174,10 @@ H2 jar for the SQL checks, are in [testing/README.md](../testing/README.md).
 
 ## 6. Version matrix
 
-| Minecraft | Server build | Java | Harness | Real client |
+| Minecraft | Server build | Java | Harness | Modern features in use |
 | --- | --- | --- | --- | --- |
-| 1.8.8 | Paper 445 | Temurin 8u504 | PASS (47 checks) | PASS (mineflayer) |
-| 26.3 | Paper 205 | Temurin 25.0.4.1 | PASS (69 checks) | not supported by mineflayer |
+| 1.8.8 | Paper 445 | Temurin 8u504 | PASS (64 checks) | none: legacy colours, Bukkit item format, Bukkit scheduler |
+| 26.3 | Paper 205 | Temurin 25.0.4.1 | PASS (102 checks) | Adventure + MiniMessage, NBT item storage, global/entity schedulers, cached offline lookup |
 
 Minecraft 26.1 and newer require Java 25 to run the server itself; the plugin jar is still Java 8
 bytecode, so 1.8 servers on Java 8 load exactly the same file.

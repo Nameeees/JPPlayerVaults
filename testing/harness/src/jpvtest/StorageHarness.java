@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.sql.Driver;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -66,11 +67,31 @@ public final class StorageHarness extends JavaPlugin {
             testSqlStorage(plugin);
             testSenderCommands(plugin);
             testPlayerCommands(plugin);
+            testCodec(plugin);
+            testTextUtilities(plugin);
+            testMiniMessage(plugin);
         } catch (Throwable problem) {
             failures++;
             getLogger().severe("HARNESS EXCEPTION " + problem.getClass().getName() + ": " + problem.getMessage());
             problem.printStackTrace();
         }
+        // El planificador necesita que el servidor siga tickeando para poder
+        // comprobar que dispara y que se cancela.
+        getServer().getScheduler().runTaskLater(this, this::testSchedulersThenReport, 5L);
+    }
+
+    private void testSchedulersThenReport() {
+        try {
+            testSchedulers(plugin(), this::report);
+        } catch (Throwable problem) {
+            failures++;
+            getLogger().severe("HARNESS EXCEPTION " + problem.getClass().getName() + ": " + problem.getMessage());
+            problem.printStackTrace();
+            report();
+        }
+    }
+
+    private void report() {
         getLogger().info("HARNESS RESULT checks=" + checks + " failures=" + failures);
         getLogger().info("HARNESS " + (failures == 0 ? "PASS" : "FAIL"));
         getServer().getScheduler().runTaskLater(this, Bukkit::shutdown, 40L);
@@ -325,9 +346,35 @@ public final class StorageHarness extends JavaPlugin {
         check("non-numeric argument is rejected", strip(last()).contains("abc"));
 
         messages.clear();
+        opened = null;
         executor.onCommand(player, command, "pv", new String[0]);
+        check("/pv without arguments opens the picker", opened != null
+                && opened.getHolder().getClass().getName().endsWith("PickerHolder"));
+        int pickerVaults = opened == null ? -1 : (Integer) opened.getHolder().getClass()
+                .getMethod("getAvailable").invoke(opened.getHolder());
+        check("picker lists one icon per available vault", pickerVaults == 3);
+        check("picker has room for its icons", opened != null && opened.getSize() >= 9);
+
+        messages.clear();
+        executor.onCommand(player, command, "pv", new String[]{"help"});
         check("help lists the available vaults", strip(joined()).contains("Vaults available")
                 && strip(joined()).contains("3"));
+
+        // Pulsar el segundo icono del selector abre el vault #2.
+        Object picker = opened == null ? null : opened.getHolder();
+        if (picker != null) {
+            messages.clear();
+            opened = null;
+            managerClass.getMethod("openFromPicker", Player.class, picker.getClass(), int.class)
+                    .invoke(manager, player, picker, 1);
+            Object holder = opened == null ? null : opened.getHolder();
+            check("picking an icon opens that vault", holder != null
+                    && holderClass.getName().equals(holder.getClass().getName())
+                    && ((Integer) holder.getClass().getMethod("getNumber").invoke(holder)) == 2);
+            if (holder != null) {
+                handleClose.invoke(manager, player, holder);
+            }
+        }
 
         messages.clear();
         executor.onCommand(player, command, "pv", new String[]{"reload"});
@@ -379,6 +426,186 @@ public final class StorageHarness extends JavaPlugin {
         messages.clear();
         executor.onCommand(admin, command, "pv", new String[]{"admin", "info", testId.toString()});
         check("the deleted vault no longer has items", strip(joined()).contains("Vaults with items: 0"));
+    }
+
+    // ------------------------------------------------- formato de los items
+
+    /**
+     * El codec debe leer lo que escriben las tres generaciones de formato:
+     * NBT (Paper 1.20.5+), Bukkit con cabecera (1.2.0+) y Bukkit sin cabecera
+     * (1.0.0-1.1.0). Que los datos de una version anterior sigan abriendo es la
+     * prueba que mas importa aqui.
+     */
+    private void testCodec(Plugin jp) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> codec = loader.loadClass("me.jp.jpvaults.storage.VaultCodec");
+        Method encode = codec.getMethod("encode", ItemStack[].class, boolean.class);
+        Method decode = codec.getMethod("decode", byte[].class, int.class);
+        Method isNbt = codec.getMethod("isNbt", byte[].class);
+        boolean modern = (Boolean) codec.getMethod("nbtAvailable").invoke(null);
+        getLogger().info("Codec: NBT item API " + (modern ? "available" : "NOT available (old server)"));
+
+        ItemStack[] contents = new ItemStack[54];
+        contents[0] = new ItemStack(Material.DIAMOND, 17);
+        ItemStack named = new ItemStack(Material.PAPER, 1);
+        ItemMeta meta = named.getItemMeta();
+        meta.setDisplayName("Nombre \u00f1");
+        meta.setLore(Collections.singletonList("linea de lore"));
+        named.setItemMeta(meta);
+        contents[7] = named;
+        contents[53] = new ItemStack(Material.ARROW, 3);
+
+        byte[] bukkit = (byte[]) encode.invoke(null, contents, false);
+        check("Codec: the bukkit format writes its header", bukkit.length > 1 && bukkit[0] == 1);
+        check("Codec: bukkit round-trip keeps all 54 slots",
+                Arrays.equals(contents, (ItemStack[]) decode.invoke(null, bukkit, 54)));
+
+        // Blob de 1.0.0-1.1.0: sin cabecera, empieza por el magic de ObjectStream.
+        byte[] legacy = Arrays.copyOfRange(bukkit, 1, bukkit.length);
+        check("Codec: a pre-1.2.0 blob starts with the ObjectStream magic",
+                legacy.length > 0 && legacy[0] == (byte) 0xAC);
+        check("Codec: data saved by 1.1.0 still loads",
+                Arrays.equals(contents, (ItemStack[]) decode.invoke(null, legacy, 54)));
+
+        if (!modern) {
+            getLogger().info("CHECK SKIP: the NBT round-trip needs Paper 1.20.5+");
+            return;
+        }
+        byte[] nbt = (byte[]) encode.invoke(null, contents, true);
+        check("Codec: the nbt format marks itself as nbt", (Boolean) isNbt.invoke(null, nbt));
+        check("Codec: nbt round-trip keeps all 54 slots",
+                Arrays.equals(contents, (ItemStack[]) decode.invoke(null, nbt, 54)));
+        check("Codec: nbt is not bigger than the bukkit format", nbt.length <= bukkit.length * 2);
+    }
+
+    // ------------------------------------------------------------- texto
+
+    private void testTextUtilities(Plugin jp) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> text = loader.loadClass("me.jp.jpvaults.util.Text");
+        Method hasTags = text.getMethod("hasMiniMessageTags", String.class);
+        Method hasLegacy = text.getMethod("hasLegacyCodes", String.class);
+        Method stripTags = text.getMethod("stripMiniMessageTags", String.class);
+        Method limit = text.getMethod("limitVisible", String.class, int.class);
+
+        check("Text: a colour tag is detected as MiniMessage", (Boolean) hasTags.invoke(null, "<red>hi</red>"));
+        check("Text: a gradient is detected as MiniMessage",
+                (Boolean) hasTags.invoke(null, "<gradient:#2ec4b6:#12727f>x</gradient>"));
+        check("Text: <player|uuid> is not a MiniMessage tag",
+                !((Boolean) hasTags.invoke(null, "/pv admin open <player|uuid> 1")));
+        check("Text: legacy colour codes are detected", (Boolean) hasLegacy.invoke(null, "&aHola &lMundo"));
+        check("Text: a plain text has no legacy codes", !((Boolean) hasLegacy.invoke(null, "Hola mundo")));
+        check("Text: tags are stripped when there is no Adventure",
+                "Hola".equals(stripTags.invoke(null, "<red>Hola</red>")));
+        String limited = (String) limit.invoke(null, "\u00a7a1234567890", 5);
+        check("Text: the visible limit keeps colour codes intact",
+                limited.startsWith("\u00a7a") && ChatColor.stripColor(limited).equals("12345"));
+    }
+
+    /**
+     * El sistema de color moderno, de punta a punta: se reescribe el titulo con
+     * MiniMessage, se recarga y se comprueba que sale un Component con el texto
+     * correcto (sin etiquetas). Al terminar se deja todo como estaba.
+     */
+    private void testMiniMessage(Plugin jp) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> components = loader.loadClass("me.jp.jpvaults.util.Components");
+        Class<?> managerClass = loader.loadClass("me.jp.jpvaults.manager.MessageManager");
+        probeAdventure(components);
+        getLogger().info("Text system: " + components.getMethod("describe").invoke(null));
+
+        if (!((Boolean) components.getMethod("miniMessageAvailable").invoke(null))) {
+            getLogger().info("CHECK SKIP: MiniMessage is not available on this server");
+            return;
+        }
+        check("Components: legacy text becomes a Component",
+                components.getMethod("fromLegacy", String.class).invoke(null, "\u00a7aHola") != null);
+
+        File messagesFile = new File(jp.getDataFolder(), "messages_en.yml");
+        File configFile = new File(jp.getDataFolder(), "config.yml");
+        String messagesBefore = new String(Files.readAllBytes(messagesFile.toPath()), StandardCharsets.UTF_8);
+        String configBefore = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
+        try {
+            String tagged = "vault-title: '<gradient:#2ec4b6:#12727f><bold>Vault</bold></gradient> <gray>#{number}</gray>'";
+            String rewritten = messagesBefore.replaceAll("(?m)^vault-title:.*$", tagged);
+            Files.write(messagesFile.toPath(), rewritten.getBytes(StandardCharsets.UTF_8));
+
+            Method component = managerClass.getMethod("component", String.class, String[].class);
+            Method get = managerClass.getMethod("get", String.class, String[].class);
+
+            // --- modo auto: el mensaje con etiquetas se convierte y el legacy no.
+            Files.write(configFile.toPath(),
+                    withMessagesFormat(configBefore, "auto").getBytes(StandardCharsets.UTF_8));
+            jp.getClass().getMethod("reloadPlugin").invoke(jp);
+            Object messages = jp.getClass().getMethod("getMessages").invoke(jp);
+
+            Object auto = component.invoke(messages, "vault-title", new String[]{"number", "1"});
+            check("MiniMessage: in auto mode a tagged message becomes a Component", auto != null);
+            Object legacyComponent = component.invoke(messages, "command.no-vaults", new String[0]);
+            check("MiniMessage: in auto mode a legacy message stays as text", legacyComponent == null);
+            String legacyText = (String) get.invoke(messages, "command.no-vaults", new String[0]);
+            check("MiniMessage: in auto mode the legacy colours are still applied",
+                    legacyText.startsWith("\u00a78[\u00a7a"));
+
+            // --- modo minimessage: todo pasa por MiniMessage, tambien el titulo.
+            Files.write(configFile.toPath(),
+                    withMessagesFormat(configBefore, "minimessage").getBytes(StandardCharsets.UTF_8));
+            jp.getClass().getMethod("reloadPlugin").invoke(jp);
+            messages = jp.getClass().getMethod("getMessages").invoke(jp);
+
+            Object component1 = component.invoke(messages, "vault-title", new String[]{"number", "1"});
+            check("MiniMessage: a tagged message becomes a Component", component1 != null);
+            String plain = component1 == null ? "" : (String) components.getMethod("toPlain", Object.class)
+                    .invoke(null, component1);
+            check("MiniMessage: the Component renders as plain text",
+                    plain.contains("Vault") && plain.contains("1") && !plain.contains("<"));
+            String raw = (String) get.invoke(messages, "vault-title", new String[]{"number", "1"});
+            check("MiniMessage: raw text keeps the tags for the component path", raw.contains("<gradient"));
+
+            String sizeable = (String) get.invoke(messages, "picker.title", new String[]{"available", "3"});
+            check("MiniMessage: the picker title is still readable", sizeable.length() > 0);
+        } finally {
+            Files.write(messagesFile.toPath(), messagesBefore.getBytes(StandardCharsets.UTF_8));
+            Files.write(configFile.toPath(), configBefore.getBytes(StandardCharsets.UTF_8));
+            jp.getClass().getMethod("reloadPlugin").invoke(jp);
+        }
+        Object restored = managerClass.getMethod("component", String.class, String[].class)
+                .invoke(jp.getClass().getMethod("getMessages").invoke(jp), "vault-title",
+                        new String[]{"number", "1"});
+        check("MiniMessage: after restoring the config the legacy path is back", restored == null);
+    }
+
+    // -------------------------------------------------------- planificadores
+
+    private void testSchedulers(Plugin jp, Runnable done) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> schedulers = loader.loadClass("me.jp.jpvaults.util.Schedulers");
+        final Method cancel = loader.loadClass("me.jp.jpvaults.util.Schedulers$Task").getMethod("cancel");
+        Class<?> taskClass = loader.loadClass("me.jp.jpvaults.util.Schedulers$Task");
+
+        check("Schedulers: folia detection answers", schedulers.getMethod("folia").invoke(null) instanceof Boolean);
+        getLogger().info("Schedulers: folia=" + schedulers.getMethod("folia").invoke(null));
+
+        final int[] ticks = {0};
+        final Object task = schedulers.getMethod("runGlobalTimer", Plugin.class, Runnable.class, long.class, long.class)
+                .invoke(null, jp, (Runnable) () -> ticks[0]++, 1L, 1L);
+        check("Schedulers: a global timer returns a cancellable handle", taskClass.isInstance(task));
+
+        getServer().getScheduler().runTaskLater(this, () -> {
+            try {
+                check("Schedulers: the global timer fires", ticks[0] >= 2);
+                cancel.invoke(task);
+                final int after = ticks[0];
+                getServer().getScheduler().runTaskLater(this, () -> {
+                    check("Schedulers: cancelling stops the timer", ticks[0] == after);
+                    done.run();
+                }, 10L);
+            } catch (Throwable problem) {
+                failures++;
+                getLogger().severe("HARNESS EXCEPTION in the scheduler test: " + problem.getMessage());
+                done.run();
+            }
+        }, 10L);
     }
 
     // ----------------------------------------------------------------- helpers
@@ -513,8 +740,42 @@ public final class StorageHarness extends JavaPlugin {
         return null;
     }
 
-    /** El titulo del inventario desaparecio de Inventory en las APIs modernas. */
-    private String inventoryTitle(Inventory inventory) {
+    /**
+     * Deja constancia de que clases de Adventure ve el plugin: si algun dia
+     * cambia el empaquetado del servidor, se ve aqui en una linea.
+     */
+    private void probeAdventure(Class<?> components) {
+        StringBuilder visible = new StringBuilder();
+        ClassLoader pluginLoader = components.getClassLoader();
+        String[] probes = {
+                "net.kyori.adventure.text.Component",
+                "net.kyori.adventure.text.minimessage.MiniMessage",
+                "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer"
+        };
+        for (String name : probes) {
+            try {
+                Class.forName(name, false, pluginLoader);
+                visible.append(name.substring(name.lastIndexOf('.') + 1)).append(' ');
+            } catch (Throwable missing) {
+                visible.append('[').append(name.substring(name.lastIndexOf('.') + 1)).append(" missing] ");
+            }
+        }
+        getLogger().info("PROBE: Adventure classes seen by the plugin: " + visible.toString().trim());
+    }
+
+    /**
+     * Fija messages-format en un config.yml que puede ser de una version
+     * anterior del plugin (sin esa clave todavia).
+     */
+    private static String withMessagesFormat(String yaml, String value) {
+        if (yaml.contains("messages-format:")) {
+            return yaml.replaceAll("(?m)^messages-format:.*$", "messages-format: " + value);
+        }
+        String separator = System.lineSeparator();
+        return yaml + separator + "messages-format: " + value + separator;
+    }
+
+    /** El titulo del inventario desaparecio de Inventory en las APIs modernas. */    private String inventoryTitle(Inventory inventory) {
         if (inventory == null) {
             return "";
         }

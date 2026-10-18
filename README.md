@@ -39,8 +39,9 @@ source under the MIT license.
 
 ## Features
 
-- `/pv <number>` opens that private vault; `/pv` or `/pv help` shows the help and how many vaults
-  the player has.
+- `/pv` opens a **vault picker**: a menu with one icon per vault showing how many items each one
+  holds. `/pv <number>` opens that vault directly; `/pv help` shows the text help
+  (`vaults.picker: false` brings back the old behaviour).
 - **Rank-based vault count**: the plugin grants the highest `jpvaults.vaults.<n>` permission the
   player has. No economy plugin and no Vault required.
 - **9 to 54 slots per vault**, configurable (always a multiple of 9).
@@ -51,10 +52,16 @@ source under the MIT license.
   guarded, stale GUI views closed on reload, atomic file writes.
 - **Two storage backends**: readable YAML files (default) or a database over JDBC
   (`storage.type: mysql`), with `/pv admin migrate` to move between them.
+- **Items stored the way the server recommends**: on Paper 1.20.5+ vaults are saved as NBT
+  (`ItemStack.serializeItemsAsBytes`), which Paper documents as safer for data migrations than
+  Bukkit's serialization; anywhere else the Bukkit format is used. Both are read back transparently
+  and data saved by 1.0.0/1.1.0 keeps loading (`storage.item-format`).
 - **Administrator tools**: open another player's vault (online or offline), inspect a player or the
   plugin, delete a single vault and migrate the storage.
-- **Every text is configurable** in `messages_<language>.yml` (legacy `&` colors, works on 1.8).
-  English and Spanish are bundled; any other language can be added as a file.
+- **Every text is configurable** in `messages_<language>.yml`. Legacy `&` colours work on every
+  version, and on Paper/Adventure the same file accepts **MiniMessage** (gradients, hex, hover,
+  click) per message — `messages-format: legacy | minimessage | auto`. English and Spanish are
+  bundled; any other language can be added as a file.
 - **Single jar**, no NMS, no shaded libraries, no bStats, no update checker, no network access of
   its own.
 
@@ -65,6 +72,7 @@ source under the MIT license.
 | ![Feature overview](docs/assets/features.png) | ![One jar, every version](docs/assets/versions.png) |
 | ![Ranks decide](docs/assets/permissions.png) | ![Data safety](docs/assets/safety.png) |
 | ![Ready in three steps](docs/assets/setup.png) | ![Commands and messages](docs/assets/commands.png) |
+| ![Colours that fit your server](docs/assets/colours.png) | |
 
 ## Compatibility
 
@@ -89,7 +97,7 @@ detects them at runtime and skips the guard on versions that do not have them.
 
 ## Installation
 
-1. Download `JPPlayerVaults-1.1.0.jar` from the
+1. Download `JPPlayerVaults-1.2.0.jar` from the
    [releases page](https://github.com/Nameeees/JPPlayerVaults/releases) (or from SpigotMC) and copy
    it into the server's `plugins/` folder.
 2. Start the server (or run `/reload confirm`).
@@ -104,8 +112,9 @@ in the jar) is written to the folder when you set `language: es`.
 
 | Command | What it does | Permission |
 | --- | --- | --- |
-| `/pv <number>` | Opens your vault with that number. | `jpvaults.use` |
-| `/pv` or `/pv help` | Shows the help and how many vaults you have. | `jpvaults.use` |
+| `/pv` | Opens the vault picker: one icon per vault, with how many items each one holds. | `jpvaults.use` |
+| `/pv <number>` | Opens your vault with that number directly. | `jpvaults.use` |
+| `/pv help` | Shows the help and how many vaults you have. | `jpvaults.use` |
 | `/pv reload` | Reloads `config.yml` and the messages in place. | `jpvaults.reload` |
 | `/pv admin ...` | Administrator tools; see [Administration](#administration). | `jpvaults.admin` |
 
@@ -167,13 +176,18 @@ the relevant group.
 | Key | Description | Default |
 | --- | --- | --- |
 | `language` | Message language (`messages_<language>.yml`). Bundled: `en`, `es`. | `en` |
+| `messages-format` | How the messages are read: `legacy` (`&`), `minimessage` (tags, needs Paper/Adventure) or `auto` (legacy, but a message written with tags is sent as a Component). | `auto` |
 | `vaults.size` | Slots per vault (multiple of 9, 9–54). 54 is the Minecraft maximum. | `54` |
 | `vaults.default-amount` | Vaults for players without a rank permission. | `1` |
 | `vaults.max-amount` | Highest `jpvaults.vaults.<n>` checked (1–100). | `10` |
+| `vaults.picker` | `/pv` with no arguments opens the vault menu; `false` shows the help text instead. | `true` |
+| `vaults.title-max-length` | Longest inventory title in visible characters; `0` = no limit (only for servers whose clients are all modern). | `32` |
 | `storage.type` | `yaml` (one file per player) or `mysql` (any database over JDBC). Requires a restart. | `yaml` |
 | `storage.folder` | Folder inside the plugin folder with the per-player files. Also the source of `/pv admin migrate`. | `data` |
 | `storage.autosave-seconds` | How often open vaults are saved. `0` disables autosave (close, quit and shutdown still save). | `300` |
-| `storage.mysql.*` | Database connection: `host`, `port`, `database`, `username`, `password`, `table-prefix`, `properties`, `jdbc-url`, `driver-class`, `pool-size`, `connection-timeout-ms`. | — |
+| `storage.item-format` | SQL backend: `auto` (NBT where the server has it), `nbt` or `bukkit`. | `auto` |
+| `storage.yaml-format` | YAML backend: `readable` (one item per slot, hand-editable) or `nbt` (each vault as Base64 NBT). | `readable` |
+| `storage.mysql.*` | Database connection: `host`, `port`, `database`, `username`, `password`, `table-prefix`, `properties`, `jdbc-url`, `driver-class`, `driver-jar`, `pool-size`, `connection-timeout-ms`. | — |
 | `sounds.enabled` | Interface sounds. | `true` |
 | `sounds.volume` | Sound volume (0.0–1.0). | `0.7` |
 | `sounds.pitch` | Sound pitch (0.5–2.0). | `1.4` |
@@ -183,9 +197,22 @@ Invalid values are clamped and reported in the console instead of breaking the p
 ## Messages and languages
 
 - All visible text lives in `plugins/JPPlayerVaults/messages_<language>.yml`: prefix, inventory
-  title, help, errors.
+  title, help, errors, and the vault picker (title, item name and lore).
 - Colors use legacy `&` codes, which work on every supported version. `&#RRGGBB` hex colors are
   also accepted and are displayed on 1.16+.
+- **Modern colours**: on Paper (Adventure) a message written with MiniMessage tags is sent as a
+  Component — gradients, hex, hover and click included:
+
+  ```yaml
+  vault-title: '<gradient:#2ec4b6:#12727f><bold>Vault</bold></gradient> <gray>#{number}</gray>'
+  command.help:
+    - '<gray>Open <click:run_command:''/pv 1''><aqua>/pv 1</aqua></click></gray>'
+  ```
+
+  With `messages-format: auto` (default) a message that uses `&` stays legacy, so nothing changes
+  until you rewrite a specific message. With `minimessage`, **every** message is parsed as
+  MiniMessage. On a server without Adventure the tags are stripped so the text stays readable, and
+  the console says so once. Details: [docs/MODERN_FEATURES.md](docs/MODERN_FEATURES.md).
 - Leave a message empty (`""`) to stop sending it (for example `command.opened` to keep the chat
   clean).
 - An incomplete translation falls back to the bundled English text key by key, and the console
@@ -193,8 +220,10 @@ Invalid values are clamped and reported in the console instead of breaking the p
 - To add a language, copy `messages_en.yml` to `messages_<code>.yml`, translate it and set
   `language: <code>` in `config.yml`. The code must be 2–16 characters (`a-z`, `0-9`, `_`, `-`).
 
-The inventory title is capped at 32 visible characters for compatibility with 1.8–1.12 clients; if
-you configure a longer title it is shortened and a warning is logged.
+The inventory title is capped at `vaults.title-max-length` visible characters (32 by default) for
+compatibility with 1.8–1.12 clients; if you configure a longer one it is shortened and a warning is
+logged. On servers where the title is built as a Component you can set the limit to `0` to use it
+as-is.
 
 ## Storage backends
 
@@ -234,12 +263,33 @@ storage:
 - The JDBC driver comes from the server: Spigot and Paper ship MySQL Connector/J. The plugin tries
   `com.mysql.cj.jdbc.Driver`, `com.mysql.jdbc.Driver` and then `org.mariadb.jdbc.Driver`; point
   `storage.mysql.driver-class` at another one and use `jdbc-url` for another engine.
+- If the server does not ship a driver, drop the driver `.jar` into `plugins/JPPlayerVaults/lib/`
+  (loaded with its own class loader) or point `storage.mysql.driver-jar` at it. Paper can also
+  download it for you if you uncomment the `libraries:` block in `plugin.yml` — it is commented out
+  because that makes every server start need internet.
 - No pool library is bundled: the plugin keeps a few connections of its own and reuses them.
 - If the database cannot be reached at startup, the plugin logs the error and **keeps working with
   YAML** rather than leaving the server without vaults. Fix the settings, restart, and run
   `/pv admin migrate` to copy the YAML data into the database.
 - Reads happen on the server thread when a vault opens; writes happen on a single plugin thread, in
   order, and closing a vault waits (bounded to 5 seconds) for its transaction.
+
+### How the items are stored
+
+Each vault is a byte blob in the database and either readable slots or one Base64 blob in YAML, and
+the format is recorded inside the data itself:
+
+| Format | When it is used | Why |
+| --- | --- | --- |
+| **NBT** (`serializeItemsAsBytes`) | Paper 1.20.5+ with `storage.item-format: auto` or `nbt` | Paper's own javadoc: *"NBT is safer for data migrations as it will use the built-in data converter instead of bukkits dangerous serialization system"*. It also keeps slot order and gaps by design. |
+| **Bukkit** (object stream / YAML maps) | Spigot, older versions, or `item-format: bukkit` | Works on every version, and it is what 1.0.0–1.1.0 wrote, so existing data keeps loading either way. |
+
+- Every blob starts with a format byte and blobs written before 1.2.0 (no header) are still
+  detected, so **there is nothing to migrate** when upgrading.
+- A vault stored as NBT can only be read by a server that has that API: before moving a world from
+  Paper to Spigot, set `item-format: bukkit` on Paper and let the vaults be saved again.
+- `storage.yaml-format: nbt` does the same for the YAML backend, storing each vault as Base64 NBT
+  instead of hand-editable slots (readable stays the default).
 
 ### Moving between backends
 
