@@ -307,13 +307,13 @@ automatically.
 
 ```
 src/main/java/me/jp/jpvaults/
-├── JPPlayerVaults.java          # lifecycle, config, sounds, off-hand guard
+├── JPPlayerVaults.java          # lifecycle, config, storage selection, sounds, off-hand guard
 ├── command/PlayerVaultCommand.java
 ├── listener/VaultListener.java  # close, quit, Q/F protection
-├── manager/                     # MessageManager (languages) and VaultManager (core)
-├── menu/VaultHolder.java        # identifies the open inventory
+├── manager/                     # MessageManager, VaultManager (core) and StorageMigration
+├── menu/VaultHolder.java        # identifies the open inventory (own or admin view)
 ├── model/PlayerVaultData.java   # in-memory data (54 slots per vault)
-├── storage/                     # VaultStorage interface + YAML implementation
+├── storage/                     # VaultStorage + YAML and JDBC backends, codec and settings
 └── util/                        # Text (colors/truncation) and UiSound (version-safe sounds)
 
 src/main/resources/
@@ -335,6 +335,10 @@ build, documentation site, test harness and SpigotMC submission pack.
   site and the release, the SpigotMC rules that shape the description, and the traps already paid
   for (the `bungeecord-chat` snapshot, the Maven descriptor changing the jar hash, the 1.8 API that
   cannot proxy `Player`, `mkdocs build --strict` errors, and more).
+- The **[modern-version audit](docs/MODERN_FEATURES.md)** lists what the newest APIs (26.3) offer
+  that this plugin does not use yet — NBT item storage for safer Minecraft upgrades, cached offline
+  lookups, Adventure components, native dialogs, Folia and Paper's `libraries:` — with the verified
+  API facts behind each item, what not to do, and a recommended order.
 
 ## Support
 
