@@ -1,0 +1,36 @@
+# ============================================================
+#  JPPlayerVaults - English messages
+#  Format: legacy color codes with & (works on 1.8+).
+#  Palette: &a emerald (brand and success), &8/&7 structure,
+#           &c error, &e warning. Highlights in &f.
+#  Placeholders {like_this} are RAW: do not put colors in them.
+#  Messages without visible content (empty or colors only) are
+#  not sent (useful: leave 'opened' as "" to keep chat clean).
+#  Hex &#RRGGBB only shows on 1.16+ (older versions ignore it).
+# ============================================================
+
+config-version: 1
+
+# Inserted wherever {prefix} appears.
+prefix: "&8[&a&lVaults&8] &7» "
+
+# Inventory title when a vault opens (max 32 visible chars).
+vault-title: "&8» &a&lVault &f#{number} &8«"
+
+command:
+  # /pv (no arguments) and /pv help.
+  help:
+    - "&8&m         &r &a&lVaults &8» &7Help &8&m         "
+    - ""
+    - "&8» &f/pv 1&7, &f/pv 2&7… &7— Open that private vault."
+    - "&8» &f/pv reload &7— Reload config and messages."
+    - ""
+    - "&7Vaults available: &a{available}&7."
+  # Sent when a vault opens. Keep it empty to avoid chat spam.
+  opened: "{prefix}&7Vault &f#{number}&7 opened."
+  reloaded: "{prefix}&aConfig and messages reloaded."
+  player-only: "{prefix}&cThis command can only be used in game."
+  no-permission: "{prefix}&cYou don't have permission to do that."
+  invalid-number: "{prefix}&f{input} &cis not a valid vault number. Try &f/pv 1&c."
+  no-vaults: "{prefix}&cYou don't have any vaults assigned. Ask an administrator."
+  locked: "{prefix}&cVault &f#{number} &cis locked. Your rank allows &f{available}&c."

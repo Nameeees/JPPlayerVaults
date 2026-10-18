@@ -1,0 +1,43 @@
+# ============================================================
+#  JPPlayerVaults - configuration
+#  One jar for Minecraft 1.8 through the latest version.
+#  Edit the VALUES, not the keys. Visible texts live in
+#  messages_<language>.yml.
+#  config-version: only the plugin raises it through migrations,
+#  never lower it by hand.
+# ============================================================
+
+config-version: 1
+
+# Language of the messages: messages_<language>.yml is generated
+# in this folder on startup. Bundled languages: en, es.
+# Drop your own messages_<code>.yml here to add another one.
+language: en
+
+vaults:
+  # Size of each vault, in slots. Multiple of 9, from 9 to 54.
+  # 54 (6 rows) is the biggest inventory Minecraft allows.
+  size: 54
+  # Vaults given to players WITHOUT any jpvaults.vaults.<n>
+  # permission. 0 = none (everything is controlled by ranks).
+  default-amount: 1
+  # Highest jpvaults.vaults.<n> the plugin checks.
+  # Raise it if a rank should get more vaults (1-100).
+  max-amount: 10
+
+storage:
+  # Folder (inside plugins/JPPlayerVaults) with each player's
+  # data. Changing it requires a server restart.
+  folder: 'data'
+  # Autosave of the open vaults, in seconds.
+  # 0 = disabled (vaults are still saved on close, quit and
+  # server shutdown).
+  autosave-seconds: 300
+
+sounds:
+  # Interface sounds. The plugin picks the equivalent name for
+  # the server version automatically.
+  enabled: true
+  # Volume (0.0-1.0) and pitch (0.5-2.0).
+  volume: 0.7
+  pitch: 1.4

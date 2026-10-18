@@ -1,0 +1,6 @@
+name: VaultStorageHarness
+main: jpvtest.StorageHarness
+version: 1.0.0
+api-version: '1.13'
+depend: [JPPlayerVaults]
+description: Test-only harness for JPPlayerVaults (not shipped).

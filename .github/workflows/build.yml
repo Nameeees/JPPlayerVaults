@@ -1,0 +1,35 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build (Java 8 bytecode)
+        run: mvn -B clean package
+
+      - name: Verify the jar contents
+        run: |
+          JAR=$(ls target/JPPlayerVaults-*.jar | head -n 1)
+          test -n "$JAR"
+          unzip -l "$JAR" | grep -E 'plugin.yml|config.yml|messages_en.yml|messages_es.yml'
+          unzip -p "$JAR" plugin.yml | grep -E '^version: [0-9]'
+
+      - name: Upload the jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPPlayerVaults
+          path: target/JPPlayerVaults-*.jar

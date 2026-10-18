@@ -1,0 +1,64 @@
+# ============================================================
+#  JPPlayerVaults - plugin.yml
+#  Source of truth for commands and permissions.
+#  (Visible texts live in messages_<language>.yml.)
+# ============================================================
+
+name: JPPlayerVaults
+version: ${project.version}
+main: me.jp.jpvaults.JPPlayerVaults
+api-version: '1.13'
+authors: [JP]
+description: Private per-player vaults for Minecraft 1.8 to the latest version.
+
+commands:
+  pv:
+    description: Open your private vaults.
+    usage: /pv <number>
+    aliases: [playervaults, jpvaults]
+
+permissions:
+  jpvaults.use:
+    description: Allows using /pv and opening your own vaults.
+    default: true
+
+  jpvaults.reload:
+    description: Allows reloading config.yml and messages with /pv reload.
+    default: op
+
+  # ---- Vaults granted by rank -------------------------------
+  # The plugin uses the highest number the player has, up to
+  # vaults.max-amount (config.yml). Any number works even if it
+  # is not listed here; these are the defaults.
+  # LuckPerms example:
+  #   /lp group vip permission set jpvaults.vaults.3 true
+  jpvaults.vaults.1:
+    description: Grants access to 1 vault.
+    default: false
+  jpvaults.vaults.2:
+    description: Grants access to 2 vaults.
+    default: false
+  jpvaults.vaults.3:
+    description: Grants access to 3 vaults.
+    default: false
+  jpvaults.vaults.4:
+    description: Grants access to 4 vaults.
+    default: false
+  jpvaults.vaults.5:
+    description: Grants access to 5 vaults.
+    default: false
+  jpvaults.vaults.6:
+    description: Grants access to 6 vaults.
+    default: false
+  jpvaults.vaults.7:
+    description: Grants access to 7 vaults.
+    default: false
+  jpvaults.vaults.8:
+    description: Grants access to 8 vaults.
+    default: false
+  jpvaults.vaults.9:
+    description: Grants access to 9 vaults.
+    default: false
+  jpvaults.vaults.10:
+    description: Grants access to 10 vaults.
+    default: false

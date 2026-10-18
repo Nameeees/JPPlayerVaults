@@ -1,0 +1,19 @@
+# Build de Maven
+target/
+
+# Servidores de prueba locales (Paper + JDK 8 + harness)
+.test-servers/
+
+# Artefactos de las herramientas de prueba
+testing/harness/classes/
+testing/harness/*.jar
+testing/bot/node_modules/
+testing/bot/package-lock.json
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/

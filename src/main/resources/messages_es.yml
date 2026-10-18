@@ -1,0 +1,36 @@
+# ============================================================
+#  JPPlayerVaults - mensajes en español
+#  Formato: códigos legacy con & (compatible con 1.8+).
+#  Paleta: &a esmeralda (marca y éxito), &8/&7 estructura,
+#          &c error, &e aviso. Valores destacados en &f.
+#  Placeholders {asi} son RAW: no metas colores dentro.
+#  Los mensajes sin contenido visible (vacíos o solo colores) no
+#  se envían (utilidad: dejar 'opened' en "" para no ensuciar el chat).
+#  Hex &#RRGGBB solo se ve a partir de 1.16 (el resto lo ignora).
+# ============================================================
+
+config-version: 1
+
+# Se inserta donde aparezca {prefix}.
+prefix: "&8[&a&lVaults&8] &7» "
+
+# Título del inventario al abrir un vault (máximo 32 caracteres visibles).
+vault-title: "&8» &a&lVault &f#{number} &8«"
+
+command:
+  # /pv (sin argumentos) y /pv help.
+  help:
+    - "&8&m         &r &a&lVaults &8» &7Ayuda &8&m         "
+    - ""
+    - "&8» &f/pv 1&7, &f/pv 2&7… &7— Abre ese vault privado."
+    - "&8» &f/pv reload &7— Recarga config y mensajes."
+    - ""
+    - "&7Vaults disponibles: &a{available}&7."
+  # Se envía al abrir un vault. Déjalo vacío para no llenar el chat.
+  opened: "{prefix}&7Vault &f#{number}&7 abierto."
+  reloaded: "{prefix}&aConfiguración y mensajes recargados."
+  player-only: "{prefix}&cSolo puede usarse desde el juego."
+  no-permission: "{prefix}&cNo tienes permiso para hacer esto."
+  invalid-number: "{prefix}&f{input} &cno es un número de vault válido. Prueba con &f/pv 1&c."
+  no-vaults: "{prefix}&cNo tienes ningún vault asignado. Habla con un administrador."
+  locked: "{prefix}&cEl vault &f#{number} &cno está desbloqueado. Tu rango permite &f{available}&c."
