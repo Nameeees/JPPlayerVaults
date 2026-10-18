@@ -107,7 +107,9 @@ PATCH /repos/{owner}/{repo} {"is_template":true}
 ### Documentation repository
 
 One repository per plugin, named `<plugin>-docs`, built with MkDocs Material and served by GitHub
-Pages. Copy the structure of `Nameeees/jpvaults-docs`:
+Pages. `Nameeees/jpvaults-docs` is flagged as a GitHub template too, so *Use this template* on that
+repository gives the same site structure for the new plugin; the pages then get rewritten with the
+new plugin's content. The structure to keep:
 
 ```text
 mkdocs.yml            site_name, site_url, repo_url, theme, nav
