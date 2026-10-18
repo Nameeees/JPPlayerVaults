@@ -1,9 +1,19 @@
-"""Generate the SpigotMC banner and icon for JPPlayerVaults."""
+"""Generate the SpigotMC banner and icon for JPPlayerVaults.
+
+Template note: edit the BRAND block below and nothing else - every visible
+string of the banner and the icon comes from there.
+"""
 
 import math
 import os
 
 from PIL import Image, ImageDraw, ImageFont
+
+# ------------------------------------------------------------------ BRAND
+BRAND = "JPPlayerVaults"
+TAGLINE = "Private player vaults for Minecraft 1.8 \u2192 latest"
+HIGHLIGHTS = "One jar  \u00b7  No dependencies  \u00b7  Rank-based  \u00b7  Anti-dupe"
+FOOTLINE = "v1.0.0  \u00b7  MIT  \u00b7  Spigot & Paper"
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(OUT, exist_ok=True)
@@ -132,13 +142,10 @@ def banner():
     draw = ImageDraw.Draw(image)
 
     draw.rounded_rectangle([80, 96, 152, 104], radius=4, fill=GREEN)
-    draw.text((80, 120), "JPPlayerVaults", font=font(BOLD, 68), fill=TEXT)
-    draw.text((84, 212), "Private player vaults for Minecraft 1.8 \u2192 latest",
-              font=font(REGULAR, 27), fill=MUTED)
-    draw.text((84, 262), "One jar  \u00b7  No dependencies  \u00b7  Rank-based  \u00b7  Anti-dupe",
-              font=font(SEMI, 21), fill=GREEN)
-    draw.text((84, 330), "v1.0.0  \u00b7  MIT  \u00b7  Spigot & Paper",
-              font=font(REGULAR, 17), fill=(107, 125, 149))
+    draw.text((80, 120), BRAND, font=font(BOLD, 68), fill=TEXT)
+    draw.text((84, 212), TAGLINE, font=font(REGULAR, 27), fill=MUTED)
+    draw.text((84, 262), HIGHLIGHTS, font=font(SEMI, 21), fill=GREEN)
+    draw.text((84, 330), FOOTLINE, font=font(REGULAR, 17), fill=(107, 125, 149))
 
     image.convert("RGB").save(os.path.join(OUT, "banner.png"), "PNG", optimize=True)
     print("banner.png", image.size)

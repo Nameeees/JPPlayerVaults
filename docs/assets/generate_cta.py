@@ -18,6 +18,9 @@ OUT = os.path.dirname(os.path.abspath(__file__))
 LOGO_DIR = os.path.join(OUT, "icons")
 W, H = 1280, 260
 
+# ------------------------------------------------------------------ BRAND
+BRAND = "JPPlayerVaults"
+
 TEXT = (236, 243, 252)
 MUTED = (150, 169, 192)
 DIM = (110, 128, 152)
@@ -155,7 +158,7 @@ def banner(kind, url_text):
 
     # Brand anchor.
     draw.rounded_rectangle([64, 226, 96, 232], radius=3, fill=GREEN)
-    draw.text((108, 221), "JPPlayerVaults", font=font(SEMI, 16), fill=DIM)
+    draw.text((108, 221), BRAND, font=font(SEMI, 16), fill=DIM)
 
     name = "discord.png" if kind == "discord" else "documentation.png"
     image.convert("RGB").save(os.path.join(OUT, name), "PNG", optimize=True)

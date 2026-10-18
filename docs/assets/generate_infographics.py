@@ -1,9 +1,19 @@
-"""Generate the SpigotMC infographics for JPPlayerVaults (1280x720, no code shown)."""
+"""Generate the SpigotMC infographics for JPPlayerVaults (1280x720, no code shown).
+
+Template note: edit the BRAND block for the shared footer, then rewrite the
+per-image text (features, versions, permissions, safety, setup, commands)
+for the new plugin - that content is product-specific on purpose.
+"""
 
 import math
 import os
 
 from PIL import Image, ImageDraw, ImageFont
+
+# ------------------------------------------------------------------ BRAND
+BRAND = "JPPlayerVaults"
+FOOTLINE = "JPPlayerVaults  \u00b7  v1.0.0  \u00b7  MIT  \u00b7  Spigot & Paper"
+SERIES = "1.8 \u2192 26.3"
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(OUT, exist_ok=True)
@@ -57,9 +67,8 @@ def base(title, subtitle):
     draw.text((82, 168), subtitle, font=font(REGULAR, 24), fill=MUTED)
 
     draw.line([(80, 664), (1200, 664)], fill=(38, 51, 72), width=2)
-    draw.text((80, 682), "JPPlayerVaults  \u00b7  v1.0.0  \u00b7  MIT  \u00b7  Spigot & Paper",
-              font=font(REGULAR, 17), fill=DIM)
-    draw.text((1200, 682), "1.8 \u2192 26.3", font=font(SEMI, 17), fill=GREEN, anchor="ra")
+    draw.text((80, 682), FOOTLINE, font=font(REGULAR, 17), fill=DIM)
+    draw.text((1200, 682), SERIES, font=font(SEMI, 17), fill=GREEN, anchor="ra")
     return image, draw
 
 

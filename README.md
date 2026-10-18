@@ -32,6 +32,7 @@ source under the MIT license.
 - [Storage](#storage)
 - [Anti-dupe design](#anti-dupe-design)
 - [Building from source](#building-from-source)
+- [Using this repository as a template](#using-this-repository-as-a-template)
 - [Project layout](#project-layout)
 - [License](#license)
 
@@ -246,6 +247,19 @@ src/main/resources/
 ├── messages_en.yml
 └── messages_es.yml
 ```
+
+## Using this repository as a template
+
+JPPlayerVaults doubles as the reference setup for the next plugins: the same project layout, CI
+build, documentation site, test harness and SpigotMC submission pack.
+
+- The repository is marked as a GitHub **template**, so *Use this template → Create a new
+  repository* gives you a clean copy in one click.
+- **The step-by-step playbook is [docs/TEMPLATE.md](docs/TEMPLATE.md)**: what to rename file by
+  file, the consistency check, the exact GitHub API/CLI commands to create the repository, the docs
+  site and the release, the SpigotMC rules that shape the description, and the traps already paid
+  for (the `bungeecord-chat` snapshot, the Maven descriptor changing the jar hash, the 1.8 API that
+  cannot proxy `Player`, `mkdocs build --strict` errors, and more).
 
 ## Support
 

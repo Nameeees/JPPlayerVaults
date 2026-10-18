@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Community Discord
+    url: https://discord.gg/HATd9QgukF
+    about: Quick questions, support and release updates.
+  - name: Documentation
+    url: https://nameeees.github.io/jpvaults-docs/
+    about: Installation, configuration, permissions, data safety and FAQ.
