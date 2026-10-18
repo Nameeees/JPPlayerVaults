@@ -83,7 +83,9 @@ detects them at runtime and skips the guard on versions that do not have them.
 
 ## Installation
 
-1. Copy `JPPlayerVaults-1.0.0.jar` into the server's `plugins/` folder.
+1. Download `JPPlayerVaults-1.0.0.jar` from the
+   [releases page](https://github.com/Nameeees/JPPlayerVaults/releases) (or from SpigotMC) and copy
+   it into the server's `plugins/` folder.
 2. Start the server (or run `/reload confirm`).
 3. Grant `jpvaults.vaults.<n>` to your ranks (see below) and adjust
    `plugins/JPPlayerVaults/config.yml` if needed.

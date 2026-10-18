@@ -99,6 +99,13 @@ mvn clean package
 
 El `.jar` queda en `target/JPPlayerVaults-<versión>.jar`.
 
+## Enlaces
+
+- Documentación completa (inglés): <https://nameeees.github.io/jpvaults-docs/>
+- Código fuente y descargas: <https://github.com/Nameeees/JPPlayerVaults>
+- Discord de la comunidad: <https://discord.gg/HATd9QgukF>
+- Página del recurso en SpigotMC: el enlace se añade al publicar.
+
 ## Licencia
 
 MIT. Puedes usarlo, modificarlo y redistribuirlo, también en servidores comerciales, manteniendo el
