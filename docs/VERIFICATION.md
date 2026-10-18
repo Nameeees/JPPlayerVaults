@@ -6,8 +6,12 @@ the tests below or by a manual check from [QA_CHECKLIST.md](QA_CHECKLIST.md).
 
 - Date: 2026-10-18
 - Build host: Windows, Temurin JDK 21 (Maven 3.9.16)
-- Release artifact: `JPPlayerVaults-1.0.0.jar`, 37,787 bytes
-  SHA-256 `730d049b9694d62c4937d2605c0a00164b4c00ec09f8f87e659805441d878392`
+- Release artifact: `JPPlayerVaults-1.0.0.jar`, 36,008 bytes
+  SHA-256 `7c361b64892a62ea03e8a3c7f9bc382bf44fc22febb0bb92e46025b5212c9a35`
+- Continuous integration: GitHub Actions run #4 on `Nameeees/JPPlayerVaults` — **success**
+  (the first runs failed because `bungeecord-chat:1.8-SNAPSHOT`, a transitive dependency of
+  `spigot-api`, is no longer served by the Spigot or Sonatype repositories; it is now resolved from
+  PaperMC and excluded from the compile classpath because the plugin does not use BungeeCord chat)
 
 ## 1. Build verification
 
@@ -19,6 +23,13 @@ the tests below or by a manual check from [QA_CHECKLIST.md](QA_CHECKLIST.md).
 | Bytecode | `major version: 52` (Java 8) |
 | Reproducible build | Two consecutive clean builds produced the same SHA-256 |
 | Network/metrics code | No `bstats`, `mcstats`, `http://` or `https://` strings in any class |
+| Packaging | No embedded Maven descriptor, so editing `pom.xml` cannot change the released jar |
+
+> **Note on the artifact**: the 1.0.0 jar was rebuilt once while fixing the CI dependency, and the
+> packaging was changed at the same time (the `META-INF/maven` descriptor was dropped). The
+> `*.class` files and the YAML resources of the earlier and the final jar are byte-for-byte
+> identical — verified by comparing both jars entry by entry — and every test in this document was
+> re-run against the final jar.
 
 ## 2. Integration harness (real server)
 
