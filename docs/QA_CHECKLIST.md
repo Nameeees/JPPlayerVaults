@@ -168,3 +168,35 @@ Needs a real client on a test server. Tick each row on every release.
 - [ ] `README.md` and the SpigotMC description match the actual behaviour.
 - [ ] `docs/SPIGOTMC_PAGE.md` checklist completed (screenshots, links, version, free).
 - [ ] SHA-256 of the uploaded jar recorded in the release notes.
+
+## Vault picker (1.2.0)
+
+- [ ] `/pv` opens the menu; the number of icons matches the vaults the rank grants.
+- [ ] The icon lore shows how many items each vault holds, and it updates after using one.
+- [ ] Clicking an icon opens that vault; `/pv 3` still opens vault 3 directly.
+- [ ] `vaults.picker: false` + `/pv reload` brings back the text help.
+- [ ] Shift-clicking inside the picker does not move anything (all clicks are cancelled).
+
+## Item formats (1.2.0)
+
+- [ ] With `storage.item-format: bukkit` on Paper, save a vault and reopen it: items are intact.
+- [ ] Switch to `item-format: nbt`, restart, open the same vault: it still loads (previous format).
+- [ ] Save again, restart, open: still intact (NBT written by this server).
+- [ ] `storage.yaml-format: nbt` writes `vaults.<n>.nbt` in the player file and the vault still opens.
+- [ ] Restore both settings to `auto` and `readable` and confirm the vaults still open.
+
+## MiniMessage colours (1.2.0)
+
+- [ ] On Paper, set `messages-format: minimessage` and give a message a gradient: it renders as a
+      gradient in game (no tags visible).
+- [ ] With `messages-format: auto`, a `&` message still shows its legacy colours.
+- [ ] A `<click:run_command:'/pv 1'>` in the help is clickable and runs the command.
+- [ ] On a server without Adventure (Spigot/1.8), the same message shows its text without tags and
+      the console warns once.
+- [ ] `/pv admin info` reports `text: auto (Adventure + MiniMessage)` on Paper and `legacy only` on
+      a server without Adventure.
+
+## Real client re-run (pending from 1.1.0)
+
+- [ ] `testing/bot`: open `/pv 1`, move an item in, disconnect, reconnect and confirm the item came
+      back from disk (needs `npm install mineflayer`).

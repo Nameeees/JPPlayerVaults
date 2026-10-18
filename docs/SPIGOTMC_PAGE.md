@@ -40,6 +40,7 @@ suggested spot; they carry short labels only, the actual explanation stays in th
 | `docs/assets/versions.png` | 1280×720 | In the “Compatibility” section. |
 | `docs/assets/permissions.png` | 1280×720 | In the “Permissions” section. |
 | `docs/assets/commands.png` | 1280×720 | In the “Commands” section. |
+| `docs/assets/colours.png` | 1280×720 | In the “Messages and colours” section (new in 1.2.0). |
 | `docs/assets/safety.png` | 1280×720 | In the “Data safety” section. |
 | `docs/assets/setup.png` | 1280×720 | In the “Installation” section. |
 | `docs/assets/discord.png` | 1280×260 | End of the description: Discord invite (see 2.3). |
@@ -47,6 +48,7 @@ suggested spot; they carry short labels only, the actual explanation stays in th
 | `docs/assets/icon.png` | 512×512 | Resource icon (uploaded in the form, not in the description). |
 
 Suggested reading order if you prefer fewer images: `banner` → `features` → `versions` →
+`colours` →
 `permissions` → `safety` → `setup` → `commands`.
 
 You can regenerate or tweak them with the scripts in `docs/assets/` (`generate_banner_icon.py`,
@@ -122,7 +124,11 @@ The same jar runs from Minecraft 1.8.8 to the latest release on Spigot, Paper an
 
 [SIZE=5][B]Features[/B][/SIZE]
 [LIST]
-[*][B]/pv <number>[/B] opens that private vault; [B]/pv[/B] or [B]/pv help[/B] shows the help and how many vaults the player has.
+[*][B]/pv[/B] opens a [B]vault picker[/B]: a menu with one icon per vault, showing how many items each one holds.
+[*][B]/pv <number>[/B] opens that vault directly; [B]/pv help[/B] shows the help and how many vaults the player has.
+[*][B]Storage that survives Minecraft updates[/B]: on Paper 1.20.5+ items are saved as NBT (the format Paper recommends for data migrations); elsewhere the Bukkit format is used, and data saved by older versions keeps loading.
+[*][B]Modern colours on Paper[/B]: any message can use MiniMessage (gradients, hex, hover and click) while [B]&[/B] messages keep working everywhere. [B]messages-format: auto[/B] by default.
+[*][B]No driver needed for the database[/B]: drop the JDBC driver .jar into [B]plugins/JPPlayerVaults/lib/[/B].
 [*]Configurable size from [B]9 to 54 slots[/B] (always a multiple of 9).
 [*]Behaves like a real chest: shift-click, hotbar keys, drag and drop, double-click collect.
 [*]Automatic saving of open vaults, plus saving on close, quit and server shutdown.
@@ -137,8 +143,9 @@ The same jar runs from Minecraft 1.8.8 to the latest release on Spigot, Paper an
 [SIZE=5][B]Commands[/B][/SIZE]
 [TABLE]
 [TR][TH]Command[/TH][TH]What it does[/TH][TH]Permission[/TH][/TR]
+[TR][TD]/pv[/TD][TD]Opens the vault picker (one icon per vault).[/TD][TD]jpvaults.use[/TD][/TR]
 [TR][TD]/pv <number>[/TD][TD]Opens your vault with that number.[/TD][TD]jpvaults.use[/TD][/TR]
-[TR][TD]/pv or /pv help[/TD][TD]Shows the help and your available vaults.[/TD][TD]jpvaults.use[/TD][/TR]
+[TR][TD]/pv help[/TD][TD]Shows the help and your available vaults.[/TD][TD]jpvaults.use[/TD][/TR]
 [TR][TD]/pv reload[/TD][TD]Reloads config.yml and the messages.[/TD][TD]jpvaults.reload[/TD][/TR]
 [TR][TD]/pv admin open <player|uuid> <number>[/TD][TD]Opens that player's vault (online or offline).[/TD][TD]jpvaults.admin[/TD][/TR]
 [TR][TD]/pv admin info [player|uuid][/TD][TD]Storage status or a report for one player.[/TD][TD]jpvaults.admin[/TD][/TR]
