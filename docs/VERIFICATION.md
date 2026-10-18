@@ -1,94 +1,79 @@
-# Verification record — JPPlayerVaults 1.0.0
+# Verification record — JPPlayerVaults 1.1.0
 
-This file records what was actually executed for the 1.0.0 release, on which software, and with
+This file records what was actually executed for the 1.1.0 release, on which software, and with
 which result. It is deliberately specific: claims on the SpigotMC page should be backed by one of
 the tests below or by a manual check from [QA_CHECKLIST.md](QA_CHECKLIST.md).
 
 - Date: 2026-10-18
 - Build host: Windows, Temurin JDK 21 (Maven 3.9.16)
-- Release artifact: `JPPlayerVaults-1.0.0.jar`, 36,008 bytes
-  SHA-256 `7c361b64892a62ea03e8a3c7f9bc382bf44fc22febb0bb92e46025b5212c9a35`
-- Continuous integration: GitHub Actions run #4 on `Nameeees/JPPlayerVaults` — **success**
-  (the first runs failed because `bungeecord-chat:1.8-SNAPSHOT`, a transitive dependency of
-  `spigot-api`, is no longer served by the Spigot or Sonatype repositories; it is now resolved from
-  PaperMC and excluded from the compile classpath because the plugin does not use BungeeCord chat)
+- Release artifact: `JPPlayerVaults-1.1.0.jar`, 68,758 bytes
+  SHA-256 `3b6d8f1dc7ad1bd6aa3ca5f4b2589cbb1b0918a58e37e72250e1e6954d2755cd`
+- Continuous integration: GitHub Actions on `Nameeees/JPPlayerVaults` — **success**
 
 ## 1. Build verification
 
 | Check | Result |
 | --- | --- |
 | `mvn clean package` | BUILD SUCCESS |
-| `plugin.yml` version substituted from `pom.xml` | `version: 1.0.0` |
-| Jar contents | `config.yml`, `plugin.yml`, `messages_en.yml`, `messages_es.yml`, 12 plugin classes, no shaded libraries |
+| `plugin.yml` version substituted from `pom.xml` | `version: 1.1.0` |
+| Jar contents | `config.yml`, `plugin.yml`, `messages_en.yml`, `messages_es.yml`, 17 plugin classes, no shaded libraries |
 | Bytecode | `major version: 52` (Java 8) |
-| Reproducible build | Two consecutive clean builds produced the same SHA-256 |
+| Reproducible build | Two consecutive clean builds produce the same SHA-256 |
 | Network/metrics code | No `bstats`, `mcstats`, `http://` or `https://` strings in any class |
 | Packaging | No embedded Maven descriptor, so editing `pom.xml` cannot change the released jar |
-
-> **Note on the artifact**: the 1.0.0 jar was rebuilt once while fixing the CI dependency, and the
-> packaging was changed at the same time (the `META-INF/maven` descriptor was dropped). The
-> `*.class` files and the YAML resources of the earlier and the final jar are byte-for-byte
-> identical — verified by comparing both jars entry by entry — and every test in this document was
-> re-run against the final jar.
 
 ## 2. Integration harness (real server)
 
 `testing/harness` is a test-only plugin that loads next to JPPlayerVaults, drives the real classes
-and the real `/pv` command, prints `CHECK OK` / `CHECK FAILED` per assertion and stops the server.
-It is not part of the release jar.
+and commands inside a running server, prints `CHECK OK` / `CHECK FAILED` per assertion and stops the
+server. It is not part of the release jar.
+
+What it covers:
+
+- **YAML backend**: 54-slot round-trip with stack amounts, non-ASCII display name and lore, last
+  slot, empty slots, independence between vault numbers, `deleteVault`, `knownOwners`, and a
+  corrupted file (backed up as `.bak` and refused instead of loading empty).
+- **SQL backend**: the same contract against an in-memory H2 database in MySQL mode, with the driver
+  passed as an object exactly like the plugin does with the driver that ships with the server. The
+  schema created is the production one (`MEDIUMBLOB`, portable `UPDATE`-then-`INSERT` upsert,
+  transactional delete + insert), so the statements MySQL will run are the ones under test.
+- **Command layer**: `/pv`, `/pv help`, `/pv 4` locked, `/pv abc`, `/pv reload`, and every
+  `/pv admin` path (info, info with a UUID, delete with and without `confirm`, open, migrate,
+  unknown subcommand, permission denied), including the messages each one produces.
+- **Admin views**: opening another player's vault tags the holder as an admin view, a second viewer
+  is refused while it is open, deleting an open vault is refused, and after closing, the stored item
+  count is correct and the delete empties the vault.
 
 ### Paper 1.8.8 build 445 — Temurin 8u504
 
-Result: **PASS — 20 checks, 0 failures.**
+Result: **PASS — 47 checks, 0 failures.**
 
-Covered on this version:
-
-- Storage round-trip of all 54 slots, stack amount, non-ASCII display name and lore, last slot,
-  empty slots.
-- Removed items disappear after saving again; vault numbers stay independent.
-- Data is marked clean only after a successful write and dirty again after a change.
-- A corrupted YAML file is backed up as `<name>.<timestamp>.bak` instead of being overwritten.
-- Player file is written with the player UUID.
-
-The `/pv` command path cannot be driven on 1.8 through a Java dynamic proxy: the 1.8 API declares
-`getHealth()` with incompatible return types in the `Player` hierarchy, so
-`java.lang.reflect.Proxy` refuses to create the fake player. Those checks run on 26.3 instead, and
-the same inventory flow was validated on 1.8.8 with a real client (section 3).
+The `Player` interface of the 1.8 API declares `getHealth()` with incompatible return types, so
+`java.lang.reflect.Proxy` cannot create a fake player and the player-driven checks are skipped on
+this version; everything else (both backends and all command paths through a `CommandSender`) runs.
 
 ### Paper 26.3 build 205 — Temurin 25.0.4.1
 
-Result: **PASS — 44 checks, 0 failures.**
-
-Everything above, plus:
-
-- `jpvaults.vaults.3` grants 3 vaults; `/pv 4` is rejected as locked.
-- `/pv 1` opens a 54-slot inventory with title containing `#1` and a `VaultHolder`.
-- `/pv abc` is rejected, `/pv help` lists the available vaults, `/pv reload` is denied without
-  `jpvaults.reload`.
-- Closing a vault writes `data/<uuid>.yml`; reopening returns the same items and item meta.
-- A 60-character inventory title is shortened to 32 visible characters.
-- Deleting `messages_en.yml` regenerates it; `language: es` switches the locked message to Spanish
-  and switching back restores English.
+Result: **PASS — 69 checks, 0 failures.** Same as above plus the player-driven checks: inventory
+title, admin view flag, second viewer refused and delete of an open vault refused.
 
 Selected log lines (Paper 26.3):
 
 ```
-[13:10:01 INFO]: [VaultStorageHarness] CHECK OK: all 54 slots round-trip
-[13:10:01 INFO]: [VaultStorageHarness] CHECK OK: closed vault content is on disk
-[13:10:01 INFO]: [VaultStorageHarness] CHECK OK: reopened vault keeps the items
-[13:10:01 INFO]: [VaultStorageHarness] CHECK OK: long inventory title is shortened to 32 chars
-[13:10:01 INFO]: [VaultStorageHarness] CHECK OK: Spanish locked message is used
-[13:10:01 INFO]: [VaultStorageHarness] HARNESS RESULT checks=44 failures=0
-[13:10:01 INFO]: [VaultStorageHarness] HARNESS PASS
+[15:45:43 INFO]: [JPPlayerVaults] SQL storage ready: jdbc:h2:mem:jpvaults_harness;MODE=MySQL;DB_CLOSE_DELAY=-1 (tablas 'test_players' y 'test_vaults') using MEDIUMBLOB.
+[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: SQL: all 54 slots round-trip
+[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: SQL: deleteVault reports success
+[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: /pv admin open <uuid> opens the vault of that player
+[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: a second viewer is refused while the vault is open
+[15:45:43 INFO]: [VaultStorageHarness] CHECK OK: admin delete removes the vault
+[15:45:43 INFO]: [VaultStorageHarness] HARNESS RESULT checks=69 failures=0
+[15:45:43 INFO]: [VaultStorageHarness] HARNESS PASS
 ```
 
 ## 3. Real client end-to-end (Paper 1.8.8)
 
-A headless Minecraft 1.8.8 client (mineflayer 4.39.0, offline mode, operator) performed the real
-player flow. This is the end-to-end proof that the GUI, the close event, the durable write and the
-disk reload all work on the oldest supported version.
-
-Transcript:
+A headless Minecraft 1.8.8 client (mineflayer 4.39.0, offline mode, operator) performs the real
+player flow: open, put an item in, close, disconnect (which drops the plugin's cache) and reconnect.
 
 ```
 [BOT] spawned as TestBot
@@ -100,35 +85,26 @@ Transcript:
 [BOT] PASS
 ```
 
-The inventory title is decoded here; the headless client's console mangles non-ASCII characters when it prints the raw title.
-
 Server side:
 
 ```
-[14:18:04 INFO]: [JPPlayerVaults] Enabled: 54 slots per vault, up to 10 vaults per rank, language 'en'.
-[14:18:18 INFO]: [JPPlayerVaults] Disabling JPPlayerVaults v1.0.0
-[14:18:18 INFO]: [JPPlayerVaults] Disabled: open vaults were saved and written to disk.
+[15:46:20 INFO]: [JPPlayerVaults] Enabled: 54 slots per vault, up to 10 vaults per rank, language 'en', storage: YAML .../plugins/JPPlayerVaults/data.
+[15:46:34 INFO]: [JPPlayerVaults] Disabled: open vaults were saved and written to disk.
 ```
 
-What this proves:
-
-- The vault opens as a 54-slot container (90 window slots: 54 vault + 36 player inventory).
-- Clicking items into the vault works (the anti-dupe click filter does not block normal clicks).
-- Closing the window and disconnecting saves the item.
-- Reconnecting reloads the data from disk (the cache is dropped on quit), and the item is there.
-- The plugin disables cleanly and flushes pending writes.
+The inventory title is decoded here; the headless client's console mangles non-ASCII characters when
+it prints the raw title.
 
 ## 4. Not covered automatically
 
-These require a real client and are listed as manual checks in [QA_CHECKLIST.md](QA_CHECKLIST.md):
-
-- Shift-click, drag and hotbar-key item movement.
-- `Q` / `Ctrl+Q` and outside-click blocking, `F` guard feedback (sound).
-- Permission plugin integration (LuckPerms) and rank changes at runtime.
-- Two or more players with vaults open at the same time.
-- Rendering of non-ASCII characters in the inventory title on a 1.8 client (the bot receives the
-  title text, but rendering is client-side).
-- `/reload confirm` and autosave under load.
+- **A real MySQL/MariaDB server.** The SQL layer is exercised end to end against H2 in MySQL mode
+  (same DDL, same statements, same pooling and codec), but the final acceptance on a live database —
+  credentials, the driver shipped by the server, network hiccups — is a manual check: see the SQL
+  rows in [QA_CHECKLIST.md](QA_CHECKLIST.md).
+- Shift-click, drag, hotbar keys and the `Q` / `F` guards, which need a real client per version.
+- LuckPerms integration and rank changes at runtime.
+- Two or more players with vaults open at the same time under load.
+- Migrating a large YAML folder (thousands of players) on slow hardware.
 
 ## 5. How to reproduce
 
@@ -136,24 +112,24 @@ These require a real client and are listed as manual checks in [QA_CHECKLIST.md]
 mvn clean package
 ```
 
-Then, in a test server folder (Java version required by that Minecraft version):
+Then, in a test server folder (with the Java version that Minecraft release needs):
 
 ```
-plugins/JPPlayerVaults-1.0.0.jar
-plugins/VaultStorageHarness.jar        # built from testing/harness
+plugins/JPPlayerVaults-1.1.0.jar
+plugins/VaultStorageHarness.jar        # built from testing/harness, with the H2 jar shaded in
 eula=true
 online-mode=false
 ```
 
-Start the server; the harness runs on enable and stops the server after printing the result. See
-[testing/README.md](../testing/README.md) for build instructions and the bot test.
+The harness runs on enable, prints the result and stops the server. Build instructions, including the
+H2 jar for the SQL checks, are in [testing/README.md](../testing/README.md).
 
-## 6. Version matrix summary
+## 6. Version matrix
 
 | Minecraft | Server build | Java | Harness | Real client |
 | --- | --- | --- | --- | --- |
-| 1.8.8 | Paper 445 | Temurin 8u504 | PASS (20 checks) | PASS (mineflayer) |
-| 26.3 | Paper 205 | Temurin 25.0.4.1 | PASS (44 checks) | not supported by mineflayer |
+| 1.8.8 | Paper 445 | Temurin 8u504 | PASS (47 checks) | PASS (mineflayer) |
+| 26.3 | Paper 205 | Temurin 25.0.4.1 | PASS (69 checks) | not supported by mineflayer |
 
 Minecraft 26.1 and newer require Java 25 to run the server itself; the plugin jar is still Java 8
 bytecode, so 1.8 servers on Java 8 load exactly the same file.

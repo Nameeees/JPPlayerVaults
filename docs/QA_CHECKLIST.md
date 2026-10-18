@@ -1,6 +1,6 @@
 # Release QA checklist
 
-Version under test: **1.0.0** · Date: **2026-10-18**
+Version under test: **1.1.0** · Date: **2026-10-18**
 
 This checklist is the minimum gate before uploading a jar to SpigotMC. The automated part runs
 inside a real server; the manual part needs a Minecraft client and is the one that catches GUI
@@ -9,7 +9,7 @@ regressions.
 ## 1. Build gate
 
 - [x] `mvn clean package` finishes with `BUILD SUCCESS`.
-- [x] The jar is `target/JPPlayerVaults-1.0.0.jar` and its `plugin.yml` contains `version: 1.0.0`.
+- [x] The jar is `target/JPPlayerVaults-1.1.0.jar` and its `plugin.yml` contains `version: 1.1.0`.
 - [x] The jar contains `config.yml`, `plugin.yml`, `messages_en.yml`, `messages_es.yml`.
 - [x] Every class is Java 8 bytecode (`major version: 52`), so 1.8 servers on Java 8 can load it.
 - [x] Two clean builds produce the same SHA-256 (reproducible build).
@@ -24,12 +24,11 @@ the server. Run it on the oldest and the newest supported Minecraft version.
 
 Covered automatically:
 
-- Storage round-trip of 54 slots, stack amounts, display name and lore with non-ASCII text, last
-  slot, empty slots.
-- Removing items and saving again actually removes them.
-- Independent vault numbers.
+- Both backends (YAML and SQL over JDBC, the latter against H2 in MySQL mode with the production
+  schema and statements): 54-slot round-trip, stack amounts, non-ASCII display name and lore, last
+  slot, empty slots, independence between vault numbers, `deleteVault` and `knownOwners`.
 - Data marked clean only after a successful write; dirty again after a change.
-- Corrupt YAML file is backed up instead of overwritten.
+- A corrupt YAML file is backed up and refused instead of loaded empty.
 - `/pv`, `/pv 1`, `/pv 4` (locked), `/pv abc` (invalid), `/pv help`, `/pv reload` (denied).
 - Rank permissions decide the vault count (3 vaults from `jpvaults.vaults.3`).
 - Opening a vault creates a 54-slot inventory with the configured title and a `VaultHolder`.
@@ -37,13 +36,17 @@ Covered automatically:
 - Long `vault-title` is shortened to 32 visible characters.
 - Deleting `messages_en.yml` regenerates it; switching `language` to `es` changes the messages and
   switching back restores English.
+- Every `/pv admin` path: info (plugin and player), delete with and without `confirm`, open,
+  migrate, unknown subcommand and permission denied.
+- Admin views: the holder is tagged as an admin view, a second viewer is refused while it is open,
+  deleting an open vault is refused, and after closing, the delete empties the vault.
 
 Results:
 
 | Server | Java | Result |
 | --- | --- | --- |
-| Paper 1.8.8 build 445 | Temurin 8u504 | **PASS** — 20 checks, 0 failures (command checks skipped: this API cannot proxy `Player`; the real-client test below covers the inventory flow) |
-| Paper 26.3 build 205 | Temurin 25.0.4 | **PASS** — 44 checks, 0 failures |
+| Paper 1.8.8 build 445 | Temurin 8u504 | **PASS** — 47 checks, 0 failures (player-driven checks skipped: this API cannot proxy `Player`; the real-client test below covers the inventory flow) |
+| Paper 26.3 build 205 | Temurin 25.0.4 | **PASS** — 69 checks, 0 failures |
 
 Logs and commands are recorded in [VERIFICATION.md](VERIFICATION.md).
 
@@ -112,6 +115,35 @@ Needs a real client on a test server. Tick each row on every release.
 - [ ] Invalid `vaults.size: 33` in config: the console warns and 27 slots are used.
 - [ ] Set `storage.autosave-seconds: 0`: no autosave, but close/quit/shutdown still save.
 
+### Database backend (needs a real MySQL/MariaDB — the automated test uses H2)
+
+- [ ] Set `storage.type: mysql` with valid credentials, restart: the console logs
+      `SQL storage ready: jdbc:mysql://… using MEDIUMBLOB` and the two tables exist.
+- [ ] Open `/pv 1`, put items in, close, restart the server: the items are still there.
+- [ ] Stop MySQL while the server is running, open a vault: the player gets the storage error message
+      and the console logs the failure (no empty vault is shown).
+- [ ] Start the server with MySQL down: the console warns and the plugin runs on YAML.
+- [ ] With MySQL down and YAML active, play a bit, then start MySQL, restart and run
+      `/pv admin migrate`: the data written while it was down ends up in the database.
+- [ ] `/pv admin migrate` with 200+ YAML files: progress every 25 players, no lag spikes, summary at
+      the end, files left in place.
+- [ ] `/pv admin migrate force` overwrites rows that already exist.
+- [ ] Delete a vault from the database by hand and reopen it in game: it comes back empty (no error).
+
+### Administrator commands
+
+- [ ] `/pv admin info` shows the backend, the number of players and the settings.
+- [ ] `/pv admin info <player>` shows UUID, state, vaults with items and stored items.
+- [ ] `/pv admin open <player> 1` opens that player's vault with their name in the title; moving
+      items saves to *their* data, not yours.
+- [ ] While that vault is open, the owner cannot open it (and the other way round): the message names
+      who has it open.
+- [ ] `/pv admin delete <player> 1` without `confirm` only prints the usage line.
+- [ ] `/pv admin delete <player> 1 confirm` empties that vault and leaves the others untouched.
+- [ ] Deleting a vault that is open is refused.
+- [ ] A player without `jpvaults.admin` cannot run any `/pv admin` subcommand.
+- [ ] Everything above appears in the console log with the administrator's name.
+
 ### Compatibility
 
 - [ ] 1.8 client on a 1.8 server: vault opens, title renders, no client crash.
@@ -125,6 +157,10 @@ Needs a real client on a test server. Tick each row on every release.
 - [ ] Opening a vault on a data folder with 1,000 player files is instant (files load per player).
 - [ ] Closing a vault does not create a noticeable lag spike (the write is a few milliseconds; the
       bounded wait is 5 seconds).
+- [ ] With the database backend, opening a vault on a remote database does not stall the server
+      thread (the read happens on open; measure with a slow connection if possible).
+- [ ] `/pv admin migrate` on a large folder keeps the tick rate stable (it processes 5 players per
+      tick).
 
 ## 6. Sign-off
 

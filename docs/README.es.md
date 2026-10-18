@@ -24,7 +24,7 @@ decide el rango (`jpvaults.vaults.<n>`). Cada vault es un inventario de hasta **
 
 ## Instalación
 
-1. Copia `JPPlayerVaults-1.0.0.jar` a la carpeta `plugins/` del servidor.
+1. Copia `JPPlayerVaults-1.1.0.jar` a la carpeta `plugins/` del servidor.
 2. Reinicia el servidor (o `/reload confirm`).
 3. Da `jpvaults.vaults.<n>` a tus rangos y ajusta `plugins/JPPlayerVaults/config.yml`.
 4. Para español: `language: es` y `/pv reload`.

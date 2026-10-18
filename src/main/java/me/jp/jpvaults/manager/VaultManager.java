@@ -7,6 +7,7 @@ import me.jp.jpvaults.storage.VaultStorage;
 import me.jp.jpvaults.util.Text;
 import me.jp.jpvaults.util.UiSound;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -21,8 +22,13 @@ import java.util.UUID;
  * Nucleo del plugin: cache de datos por jugador, cuantos vaults otorga el
  * rango y ciclo abrir/cerrar/guardar.
  *
- * Todo el acceso ocurre en el hilo del servidor; la escritura a disco la hace
+ * Todo el acceso ocurre en el hilo del servidor; la escritura la hace
  * VaultStorage en su propio hilo.
+ *
+ * Un mismo vault solo puede estar abierto por una persona a la vez: si un
+ * administrador lo abre con /pv admin open, el dueño no puede tenerlo abierto
+ * al mismo tiempo (ni al reves), y el guardado siempre va a los datos del
+ * dueño, no a los de quien lo esta mirando.
  */
 public final class VaultManager {
 
@@ -38,6 +44,7 @@ public final class VaultManager {
     private final JPPlayerVaults plugin;
     private final VaultStorage storage;
     private final Map<UUID, PlayerVaultData> cache = new HashMap<>();
+    /** Quien esta viendo que vault: uuid del que mira -> vault abierto. */
     private final Map<UUID, VaultHolder> open = new HashMap<>();
     private boolean titleLengthWarned;
     private boolean shuttingDown;
@@ -61,6 +68,11 @@ public final class VaultManager {
         return open.containsKey(player.getUniqueId());
     }
 
+    /** Almacenamiento activo (YAML o SQL), para informes y migraciones. */
+    public VaultStorage getStorage() {
+        return storage;
+    }
+
     /**
      * Cierra las vistas de vault que hayan sobrevivido a una sesion anterior
      * de esta clase (plugin recargado sin ejecutar onDisable). Sin esto, esa
@@ -81,62 +93,78 @@ public final class VaultManager {
         }
     }
 
-    /** Abre el vault indicado (el comando ya valido el rango del jugador). */
+    /** Abre el vault propio del jugador (el comando ya valido su rango). */
     public void openVault(Player player, int number) {
-        flushOpenVault(player);
-        PlayerVaultData data = data(player);
+        openVaultFor(player, player.getUniqueId(), player.getName(), number, false);
+    }
+
+    /**
+     * Abre el vault de un dueño concreto para quien lo esta mirando. Con
+     * {@code adminView} el guardado sigue yendo a los datos del dueño.
+     */
+    public void openVaultFor(Player viewer, UUID owner, String ownerName, int number, boolean adminView) {
+        if (!adminView) {
+            flushOpenVault(viewer);
+        }
+        PlayerVaultData data = data(owner, ownerName);
         int size = plugin.getVaultSize();
         MessageManager messages = plugin.getMessages();
 
-        String title = messages.get("vault-title", "number", String.valueOf(number));
+        String title = messages.get(adminView ? "admin.vault-title" : "vault-title",
+                "number", String.valueOf(number), "player", ownerName == null ? "" : ownerName);
         String safeTitle = Text.limitVisible(title, MAX_TITLE_LENGTH);
         if (!safeTitle.equals(title) && !titleLengthWarned) {
             titleLengthWarned = true;
-            plugin.getLogger().warning("vault-title is longer than " + MAX_TITLE_LENGTH
+            plugin.getLogger().warning("The inventory title is longer than " + MAX_TITLE_LENGTH
                     + " visible characters and was shortened for compatibility with 1.8-1.12 clients.");
         }
 
-        VaultHolder holder = new VaultHolder(player.getUniqueId(), number);
+        VaultHolder holder = new VaultHolder(owner, number, adminView);
         Inventory inventory = Bukkit.createInventory(holder, size, safeTitle);
         holder.setInventory(inventory);
         inventory.setContents(viewOf(data, number, size));
 
-        open.put(player.getUniqueId(), holder);
-        player.openInventory(inventory);
-        plugin.playUiSound(player, UiSound.OPEN);
-        messages.send(player, "command.opened", "number", String.valueOf(number));
+        open.put(viewer.getUniqueId(), holder);
+        viewer.openInventory(inventory);
+        plugin.playUiSound(viewer, UiSound.OPEN);
+        if (!adminView) {
+            // Las vistas de administrador tienen su propio mensaje en el comando.
+            messages.send(viewer, "command.opened", "number", String.valueOf(number));
+        }
     }
 
     /** Guarda el vault que se acaba de cerrar, esperando al disco. */
-    public void handleClose(Player player, VaultHolder holder) {
-        UUID id = player.getUniqueId();
-        PlayerVaultData data = cache.get(id);
+    public void handleClose(Player viewer, VaultHolder holder) {
+        PlayerVaultData data = cache.get(holder.getOwner());
         if (data != null) {
             data.setVaultContents(holder.getNumber(), holder.getInventory().getContents());
-            if (shuttingDown) {
-                // storage.shutdown() espera a que termine la cola: no hace falta
-                // bloquear el hilo del servidor 5 segundos por cada jugador.
-                save(data);
-            } else {
-                saveNow(data);
-            }
+            saveOrWait(data);
         }
-        open.remove(id, holder);
+        open.remove(viewer.getUniqueId(), holder);
+        if (holder.isAdminView()) {
+            releaseIfIdle(holder.getOwner());
+        }
     }
 
     /** Guarda lo que quedara abierto cuando el jugador sale del servidor. */
     public void handleQuit(Player player) {
-        UUID id = player.getUniqueId();
-        VaultHolder holder = open.remove(id);
-        PlayerVaultData data = cache.remove(id);
-        if (data == null) {
-            return;
-        }
+        UUID viewerId = player.getUniqueId();
+        VaultHolder holder = open.remove(viewerId);
         if (holder != null) {
-            data.setVaultContents(holder.getNumber(), holder.getInventory().getContents());
+            PlayerVaultData viewed = cache.get(holder.getOwner());
+            if (viewed != null) {
+                viewed.setVaultContents(holder.getNumber(), holder.getInventory().getContents());
+                if (viewed.isDirty()) {
+                    saveOrWait(viewed);
+                }
+            }
+            if (holder.isAdminView()) {
+                releaseIfIdle(holder.getOwner());
+            }
         }
-        if (data.isDirty()) {
-            saveNow(data);
+        PlayerVaultData own = cache.remove(viewerId);
+        if (own != null && own.isDirty()) {
+            saveOrWait(own);
         }
     }
 
@@ -158,15 +186,15 @@ public final class VaultManager {
      */
     public void shutdown() {
         shuttingDown = true;
-        for (UUID id : new ArrayList<>(open.keySet())) {
-            Player player = Bukkit.getPlayer(id);
+        for (UUID viewerId : new ArrayList<>(open.keySet())) {
+            Player player = Bukkit.getPlayer(viewerId);
             if (player != null && player.getOpenInventory().getTopInventory().getHolder() instanceof VaultHolder) {
                 player.closeInventory(); // dispara InventoryCloseEvent -> guarda
             }
         }
         // Vistas sin evento de cierre (jugador ya desconectado, etc.).
         for (Map.Entry<UUID, VaultHolder> entry : open.entrySet()) {
-            PlayerVaultData data = cache.get(entry.getKey());
+            PlayerVaultData data = cache.get(entry.getValue().getOwner());
             if (data != null) {
                 data.setVaultContents(entry.getValue().getNumber(), entry.getValue().getInventory().getContents());
             }
@@ -181,30 +209,122 @@ public final class VaultManager {
         storage.shutdown();
     }
 
+    // ------------------------------------------------------------ admin tools
+
+    /** True si ese vault concreto esta abierto por alguien. */
+    public boolean isVaultOpen(UUID owner, int number) {
+        return findViewer(owner, number, null) != null;
+    }
+
+    /** Quien tiene abierto ese vault, o null. */
+    public UUID findViewer(UUID owner, int number, UUID exceptViewer) {
+        for (Map.Entry<UUID, VaultHolder> entry : open.entrySet()) {
+            VaultHolder holder = entry.getValue();
+            if (holder.getOwner().equals(owner) && holder.getNumber() == number
+                    && (exceptViewer == null || !entry.getKey().equals(exceptViewer))) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Borra el contenido de un vault. Se niega si alguien lo tiene abierto,
+     * para que su cierre no lo vuelva a escribir.
+     */
+    public boolean deleteVault(UUID owner, int number) {
+        if (isVaultOpen(owner, number)) {
+            return false;
+        }
+        PlayerVaultData data = cache.get(owner);
+        if (data != null) {
+            data.getVaults().remove(number); // al no estar en el mapa, deja de escribirse
+        }
+        return storage.deleteVault(owner, number, true);
+    }
+
+    /** Cuantos vaults del jugador tienen algun objeto. */
+    public int vaultsWithData(UUID owner) {
+        PlayerVaultData data = data(owner, null);
+        int used = 0;
+        for (ItemStack[] contents : data.getVaults().values()) {
+            if (countItems(contents) > 0) {
+                used++;
+            }
+        }
+        return used;
+    }
+
+    /** Numero total de objetos guardados en los vaults del jugador. */
+    public int countItems(UUID owner) {
+        PlayerVaultData data = data(owner, null);
+        int total = 0;
+        for (ItemStack[] contents : data.getVaults().values()) {
+            total += countItems(contents);
+        }
+        return total;
+    }
+
+    /** Ultimo nombre conocido del jugador (cadena vacia si no hay datos). */
+    public String lastKnownName(UUID owner) {
+        return data(owner, null).getLastName();
+    }
+
+    /**
+     * Suelta los datos del jugador de la cache si nadie los tiene abiertos,
+     * guardando antes si habia cambios. Lo usan las vistas de administrador.
+     */
+    public void releaseIfIdle(UUID owner) {
+        if (isOwnerOpen(owner)) {
+            return;
+        }
+        PlayerVaultData data = cache.get(owner);
+        if (data == null) {
+            return;
+        }
+        if (data.isDirty()) {
+            saveOrWait(data);
+        }
+        cache.remove(owner);
+    }
+
+    /** True si algun visor tiene abierto un vault de ese dueño. */
+    public boolean isOwnerOpen(UUID owner) {
+        for (VaultHolder holder : open.values()) {
+            if (holder.getOwner().equals(owner)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------- internals
+
     /**
      * Guarda el vault que ya estuviera abierto antes de mostrar otro. El
      * cierre del inventario anterior casi siempre lo guarda, pero esto
      * garantiza que cambiar de vault nunca pierda cambios sin importar el
      * orden de los eventos entre versiones.
      */
-    private void flushOpenVault(Player player) {
-        VaultHolder previous = open.get(player.getUniqueId());
-        PlayerVaultData data = cache.get(player.getUniqueId());
+    private void flushOpenVault(Player viewer) {
+        VaultHolder previous = open.get(viewer.getUniqueId());
+        PlayerVaultData data = cache.get(viewer.getUniqueId());
         if (previous != null && data != null) {
             data.setVaultContents(previous.getNumber(), previous.getInventory().getContents());
-            saveNow(data);
+            saveOrWait(data);
         }
     }
 
-    /** Datos en cache del jugador; se cargan de disco la primera vez. */
-    private PlayerVaultData data(Player player) {
-        UUID id = player.getUniqueId();
-        PlayerVaultData data = cache.get(id);
+    /** Datos en cache del jugador; se cargan del disco la primera vez. */
+    private PlayerVaultData data(UUID owner, String knownName) {
+        PlayerVaultData data = cache.get(owner);
         if (data == null) {
-            data = storage.load(id);
-            cache.put(id, data);
+            data = storage.load(owner);
+            cache.put(owner, data);
         }
-        data.setLastName(player.getName()); // identifica el archivo para los administradores
+        if (knownName != null && !knownName.isEmpty()) {
+            data.setLastName(knownName); // identifica el archivo para los administradores
+        }
         return data;
     }
 
@@ -214,6 +334,16 @@ public final class VaultManager {
         ItemStack[] view = new ItemStack[size];
         System.arraycopy(stored, 0, view, 0, Math.min(size, stored.length));
         return view;
+    }
+
+    private int countItems(ItemStack[] contents) {
+        int total = 0;
+        for (ItemStack item : contents) {
+            if (item != null && item.getType() != Material.AIR) {
+                total += item.getAmount();
+            }
+        }
+        return total;
     }
 
     /**
@@ -226,11 +356,20 @@ public final class VaultManager {
     }
 
     /**
-     * Guarda y espera a que el archivo este escrito. Se usa al cerrar y al
-     * salir: si el servidor muere justo despues, el contenido ya esta en disco
+     * Guarda y espera a que los datos esten escritos. Se usa al cerrar y al
+     * salir: si el servidor muere justo despues, el contenido ya esta guardado
      * y nadie puede duplicarlo reabriendo el vault.
      */
     private void saveNow(PlayerVaultData data) {
         storage.save(data, true);
+    }
+
+    /** Durante el apagado la cola de escritura se vacia al final (storage.shutdown). */
+    private void saveOrWait(PlayerVaultData data) {
+        if (shuttingDown) {
+            save(data);
+        } else {
+            saveNow(data);
+        }
     }
 }

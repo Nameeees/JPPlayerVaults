@@ -14,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -40,8 +42,8 @@ import java.util.logging.Level;
  * renombrados en 1.13+). La escritura corre en un hilo propio y en orden.
  *
  * Proteccion de datos: si un archivo no se puede leer se conserva una copia
- * .bak antes de que el plugin pueda volver a escribir encima, y un item que
- * falle al deserializarse no impide cargar el resto del vault.
+ * .bak y el vault no se abre (mejor eso que mostrar uno vacio y sobrescribir),
+ * y un item que falle al deserializarse no impide cargar el resto del vault.
  */
 public final class YamlVaultStorage implements VaultStorage {
 
@@ -55,7 +57,6 @@ public final class YamlVaultStorage implements VaultStorage {
         if (!folder.exists() && !folder.mkdirs()) {
             plugin.getLogger().warning("Could not create the player data folder: " + folder);
         }
-        plugin.getLogger().info("Player vault files: " + folder.getAbsolutePath());
         this.writer = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable task) {
@@ -76,9 +77,9 @@ public final class YamlVaultStorage implements VaultStorage {
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         if (yaml.getKeys(false).isEmpty() && file.length() > 0L) {
             // Bukkit devuelve una configuracion vacia cuando el YAML esta roto:
-            // se guarda una copia antes de que un guardado la sobrescriba.
+            // se guarda una copia y se corta, para no sobrescribir los objetos.
             backupUnreadable(file, "The file could not be parsed");
-            return data;
+            throw new StorageException("The player file " + file.getName() + " is not readable YAML");
         }
         data.setLastName(yaml.getString("last-known-name", ""));
         ConfigurationSection vaults = yaml.getConfigurationSection("vaults");
@@ -138,6 +139,49 @@ public final class YamlVaultStorage implements VaultStorage {
         if (waitForDisk) {
             awaitWrite(writing, owner);
         }
+    }
+
+    @Override
+    public boolean deleteVault(UUID owner, int vault, boolean waitForDisk) {
+        File file = fileOf(owner);
+        if (!file.exists()) {
+            return true;
+        }
+        PlayerVaultData data = load(owner); // lanza StorageException si no se puede leer
+        data.getVaults().remove(vault);     // al no estar en el mapa, deja de escribirse
+        save(data, waitForDisk);
+        return true;
+    }
+
+    @Override
+    public Set<UUID> knownOwners() {
+        Set<UUID> owners = new LinkedHashSet<>();
+        File[] files = folder.listFiles();
+        if (files == null) {
+            return owners;
+        }
+        for (File file : files) {
+            String name = file.getName();
+            if (!file.isFile() || !name.endsWith(".yml")) {
+                continue;
+            }
+            try {
+                owners.add(UUID.fromString(name.substring(0, name.length() - 4)));
+            } catch (IllegalArgumentException notAUuid) {
+                // Copias .bak o archivos con otro nombre: se ignoran.
+            }
+        }
+        return owners;
+    }
+
+    @Override
+    public String describe() {
+        return "YAML " + folder.getAbsolutePath();
+    }
+
+    /** Ruta de la carpeta de datos, para mensajes y para la migracion. */
+    public File getFolder() {
+        return folder;
     }
 
     /** Espera acotada: en un disco normal la escritura tarda milisegundos. */

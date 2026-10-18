@@ -34,3 +34,40 @@ command:
   invalid-number: "{prefix}&f{input} &cno es un número de vault válido. Prueba con &f/pv 1&c."
   no-vaults: "{prefix}&cNo tienes ningún vault asignado. Habla con un administrador."
   locked: "{prefix}&cEl vault &f#{number} &cno está desbloqueado. Tu rango permite &f{available}&c."
+  storage-error: "{prefix}&cNo se pudieron leer tus vaults. Avisa a un administrador para que mire la consola."
+
+admin:
+  # /pv admin sin subcomando.
+  help:
+    - "&8&m         &r &a&lVaults &8» &7Admin &8&m         "
+    - ""
+    - "&8» &f/pv admin open <jugador|uuid> <número>&7 — Abre el vault de ese jugador."
+    - "&8» &f/pv admin info [jugador]&7 — Estado del plugin o informe de un jugador."
+    - "&8» &f/pv admin delete <jugador|uuid> <número> confirm&7 — Borra ese vault."
+    - "&8» &f/pv admin migrate [force]&7 — Copia los archivos YAML a la base de datos."
+  unknown: "{prefix}&cSubcomando desconocido: &f{input}&c."
+  open-usage: "{prefix}&7Uso: &f/pv admin open <jugador|uuid> <número>&7."
+  delete-usage: "{prefix}&7Uso: &f/pv admin delete <jugador|uuid> <número> confirm&7."
+  player-not-found: "{prefix}&cNo encuentro a &f{player}&c. Tiene que haber jugado en este servidor."
+  invalid-number: "{prefix}&cNúmero de vault inválido: &f{input}&c."
+  vault-open: "{prefix}&cEse vault lo tiene abierto ahora mismo &f{player}&c."
+  opened: "{prefix}&aAbierto el vault &f#{number}&a de &f{player}&a."
+  delete-done: "{prefix}&aBorrado el vault &f#{number}&a de &f{player}&a."
+  delete-failed: "{prefix}&cNo se pudo borrar ese vault (está abierto o falló el almacenamiento)."
+  # Título que se usa cuando un administrador abre el vault de otro.
+  vault-title: "&8» &a&lVault &f#{number} &8« &7{player}"
+  info:
+    header: "&8&m         &r &a&lVaults &8» &7Estado &8&m         "
+    storage: "{prefix}&7Almacenamiento: &f{type}&7 → &f{target}&7."
+    players: "{prefix}&7Jugadores con datos: &f{players}&7."
+    settings: "{prefix}&7Tamaño: &f{size}&7 · Por defecto: &f{default}&7 · Máximo por rango: &f{max}&7 · Autoguardado: &f{autosave}s&7."
+    player-header: "&8&m         &r &a&lVaults &8» &7{player} &8&m         "
+    player-id: "{prefix}&7UUID: &f{uuid}&7 · Estado: &f{state}&7."
+    player-vaults: "{prefix}&7Vaults con objetos: &f{used}&7 · Objetos guardados: &f{items}&7."
+    player-rank: "{prefix}&7Rango: puede abrir &f{available}&7 vaults."
+    player-open: "{prefix}&7Abiertos ahora: &f{open}&7."
+  migrate:
+    start: "{prefix}&7Migrando &f{total}&7 jugador(es) de YAML a la base de datos&7 (ya en la base: &f{skipped}&7)…"
+    progress: "{prefix}&7Progreso: &f{done}&7/&f{total}&7."
+    done: "{prefix}&aMigración terminada: &f{migrated}&a jugador(es), &f{vaults}&a vault(s), &f{items}&a objeto(s). Ya en la base: &f{skipped}&a. Errores: &f{failed}&a."
+    not-sql: "{prefix}&cLa migración solo sirve con storage.type: mysql (ahora mismo &f{type}&c)."

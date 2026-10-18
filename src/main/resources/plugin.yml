@@ -14,7 +14,7 @@ description: Private per-player vaults for Minecraft 1.8 to the latest version.
 commands:
   pv:
     description: Open your private vaults.
-    usage: /pv <number>
+    usage: /pv <number> | /pv help | /pv admin ...
     aliases: [playervaults, jpvaults]
 
 permissions:
@@ -24,6 +24,10 @@ permissions:
 
   jpvaults.reload:
     description: Allows reloading config.yml and messages with /pv reload.
+    default: op
+
+  jpvaults.admin:
+    description: Allows the /pv admin subcommands (open, info, delete, migrate).
     default: op
 
   # ---- Vaults granted by rank -------------------------------

@@ -7,6 +7,7 @@ target/
 # Artefactos de las herramientas de prueba
 testing/harness/classes/
 testing/harness/*.jar
+testing/harness/lib/
 testing/bot/node_modules/
 testing/bot/package-lock.json
 

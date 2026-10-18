@@ -26,10 +26,11 @@ source under the MIT license.
 - [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Commands](#commands)
+- [Administration](#administration)
 - [Permissions](#permissions)
 - [Configuration](#configuration)
 - [Messages and languages](#messages-and-languages)
-- [Storage](#storage)
+- [Storage backends](#storage-backends)
 - [Anti-dupe design](#anti-dupe-design)
 - [Building from source](#building-from-source)
 - [Using this repository as a template](#using-this-repository-as-a-template)
@@ -41,17 +42,21 @@ source under the MIT license.
 - `/pv <number>` opens that private vault; `/pv` or `/pv help` shows the help and how many vaults
   the player has.
 - **Rank-based vault count**: the plugin grants the highest `jpvaults.vaults.<n>` permission the
-  player has. No economy plugin, no Vault, no database required.
+  player has. No economy plugin and no Vault required.
 - **9 to 54 slots per vault**, configurable (always a multiple of 9).
 - Behaves like a real chest: shift-click, hotbar keys, drag and drop, double-click collect.
 - **Automatic saving** of open vaults (configurable), plus saving on close, quit and server
   shutdown.
 - **Anti-dupe** protections: durable save on close, `Q` and outside clicks blocked, off-hand swap
   guarded, stale GUI views closed on reload, atomic file writes.
+- **Two storage backends**: readable YAML files (default) or a database over JDBC
+  (`storage.type: mysql`), with `/pv admin migrate` to move between them.
+- **Administrator tools**: open another player's vault (online or offline), inspect a player or the
+  plugin, delete a single vault and migrate the storage.
 - **Every text is configurable** in `messages_<language>.yml` (legacy `&` colors, works on 1.8).
   English and Spanish are bundled; any other language can be added as a file.
-- **Single jar**, no NMS, no optional dependencies, no bStats, no update checker, no network
-  access.
+- **Single jar**, no NMS, no shaded libraries, no bStats, no update checker, no network access of
+  its own.
 
 ## Gallery
 
@@ -84,7 +89,7 @@ detects them at runtime and skips the guard on versions that do not have them.
 
 ## Installation
 
-1. Download `JPPlayerVaults-1.0.0.jar` from the
+1. Download `JPPlayerVaults-1.1.0.jar` from the
    [releases page](https://github.com/Nameeees/JPPlayerVaults/releases) (or from SpigotMC) and copy
    it into the server's `plugins/` folder.
 2. Start the server (or run `/reload confirm`).
@@ -102,8 +107,32 @@ in the jar) is written to the folder when you set `language: es`.
 | `/pv <number>` | Opens your vault with that number. | `jpvaults.use` |
 | `/pv` or `/pv help` | Shows the help and how many vaults you have. | `jpvaults.use` |
 | `/pv reload` | Reloads `config.yml` and the messages in place. | `jpvaults.reload` |
+| `/pv admin ...` | Administrator tools; see [Administration](#administration). | `jpvaults.admin` |
 
 Aliases: `/playervaults`, `/jpvaults`.
+
+## Administration
+
+Administrator commands live under `/pv admin` and need `jpvaults.admin` (OP by default). The target
+can be the name of someone who has played on the server, or a UUID — handy for accounts that are no
+longer in the cache; copy it from the logs or from a data file.
+
+| Command | What it does |
+| --- | --- |
+| `/pv admin open <player\|uuid> <number>` | Opens that player's vault, online or offline. You can edit it; the changes are saved to the owner's data. |
+| `/pv admin info` | Storage in use, players with data, vault size, default and maximum amounts and autosave. |
+| `/pv admin info <player\|uuid>` | UUID, online state, vaults with items, stored items, rank and who has that vault open right now. |
+| `/pv admin delete <player\|uuid> <number> confirm` | Wipes one vault. The `confirm` word is required on purpose. |
+| `/pv admin migrate [force]` | Copies the YAML files into the database. Without `force` it skips players already stored. |
+
+Notes:
+
+- A vault can only be open for one person at a time: if the owner has it open, `/pv admin open`
+  refuses and says who is using it, and `/pv admin delete` refuses to delete an open vault.
+- What an administrator opens or deletes is written to the console log.
+- `/pv admin migrate` runs in small batches on the server thread (5 players per tick) and the
+  database writes happen asynchronously, so it cannot freeze the server. The YAML files are never
+  deleted: remove them yourself once you are happy with the database.
 
 ## Permissions
 
@@ -112,6 +141,7 @@ Aliases: `/playervaults`, `/jpvaults`.
 | `jpvaults.use` | Allows using `/pv` and opening your own vaults. | `true` |
 | `jpvaults.vaults.<n>` | The rank gets access to `n` vaults; the highest number the player has is used. | `false` |
 | `jpvaults.reload` | Allows `/pv reload`. | OP |
+| `jpvaults.admin` | Allows the `/pv admin` subcommands (open, info, delete, migrate). | OP |
 
 Example with LuckPerms:
 
@@ -140,8 +170,10 @@ the relevant group.
 | `vaults.size` | Slots per vault (multiple of 9, 9–54). 54 is the Minecraft maximum. | `54` |
 | `vaults.default-amount` | Vaults for players without a rank permission. | `1` |
 | `vaults.max-amount` | Highest `jpvaults.vaults.<n>` checked (1–100). | `10` |
-| `storage.folder` | Folder inside the plugin folder with the per-player files (restart required to change). | `data` |
+| `storage.type` | `yaml` (one file per player) or `mysql` (any database over JDBC). Requires a restart. | `yaml` |
+| `storage.folder` | Folder inside the plugin folder with the per-player files. Also the source of `/pv admin migrate`. | `data` |
 | `storage.autosave-seconds` | How often open vaults are saved. `0` disables autosave (close, quit and shutdown still save). | `300` |
+| `storage.mysql.*` | Database connection: `host`, `port`, `database`, `username`, `password`, `table-prefix`, `properties`, `jdbc-url`, `driver-class`, `pool-size`, `connection-timeout-ms`. | — |
 | `sounds.enabled` | Interface sounds. | `true` |
 | `sounds.volume` | Sound volume (0.0–1.0). | `0.7` |
 | `sounds.pitch` | Sound pitch (0.5–2.0). | `1.4` |
@@ -164,7 +196,9 @@ Invalid values are clamped and reported in the console instead of breaking the p
 The inventory title is capped at 32 visible characters for compatibility with 1.8–1.12 clients; if
 you configure a longer title it is shortened and a warning is logged.
 
-## Storage
+## Storage backends
+
+### YAML (default)
 
 - One readable file per player: `plugins/JPPlayerVaults/data/<uuid>.yml`.
 - Format: `vaults.<number>.items.<slot>: <Bukkit item>`, plus the last known player name so
@@ -176,8 +210,49 @@ you configure a longer title it is shortened and a warning is logged.
 - Bukkit converts item material names that were renamed in 1.13+ when loading, so data survives
   Minecraft upgrades.
 - If a file cannot be read (corrupted or hand-edited YAML), the plugin keeps a timestamped `.bak`
-  copy before it can be overwritten, and an item that fails to deserialize does not prevent the
-  rest of the vault from loading.
+  copy and refuses to open the vault until an administrator restores it — showing an empty vault
+  would let the next save overwrite the real items. A single item that fails to deserialize does not
+  prevent the rest of the vault from loading.
+
+### Database over JDBC (MySQL / MariaDB)
+
+```yaml
+storage:
+  type: mysql
+  mysql:
+    host: '127.0.0.1'
+    port: 3306
+    database: 'jpvaults'
+    username: 'root'
+    password: ''
+    table-prefix: 'jpvaults_'
+```
+
+- Tables are created on startup: `<prefix>players` (`uuid`, `last_name`, `updated_at`) and
+  `<prefix>vaults` (`uuid`, `vault`, `data`, `updated_at`). One row per vault, written inside a
+  transaction (delete + insert), so a failure halfway cannot leave a vault half saved.
+- The JDBC driver comes from the server: Spigot and Paper ship MySQL Connector/J. The plugin tries
+  `com.mysql.cj.jdbc.Driver`, `com.mysql.jdbc.Driver` and then `org.mariadb.jdbc.Driver`; point
+  `storage.mysql.driver-class` at another one and use `jdbc-url` for another engine.
+- No pool library is bundled: the plugin keeps a few connections of its own and reuses them.
+- If the database cannot be reached at startup, the plugin logs the error and **keeps working with
+  YAML** rather than leaving the server without vaults. Fix the settings, restart, and run
+  `/pv admin migrate` to copy the YAML data into the database.
+- Reads happen on the server thread when a vault opens; writes happen on a single plugin thread, in
+  order, and closing a vault waits (bounded to 5 seconds) for its transaction.
+
+### Moving between backends
+
+`/pv admin migrate` copies every YAML file into the active database:
+
+- Without arguments it skips players that already have rows; `force` overwrites them.
+- Progress and a summary go to whoever ran it and to the console.
+- The YAML files are left untouched, so they stay as a backup.
+
+The opposite direction is **not** automated: if you switch `type` back to `yaml`, the plugin starts
+from the files it finds, and anything written to the database meanwhile would be missing. Keep the
+YAML folder (or a database dump) until you are sure, and prefer migrating YAML → database rather
+than the other way round.
 
 ## Anti-dupe design
 

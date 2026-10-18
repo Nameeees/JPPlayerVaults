@@ -9,24 +9,33 @@ on a real server instead of being taken on faith.
 - `bot/` — a headless Minecraft 1.8.8 client (mineflayer) that opens `/pv 1`, moves an item into the
   vault, disconnects, reconnects and verifies the item came back from disk.
 
-Results for 1.0.0 are recorded in [../docs/VERIFICATION.md](../docs/VERIFICATION.md).
+Results for 1.1.0 are recorded in [../docs/VERIFICATION.md](../docs/VERIFICATION.md).
 
 ## 1. Build the harness
 
 The harness is compiled against the same Spigot 1.8.8 API as the plugin, so it also works on modern
-servers (it only touches API present in every version).
+servers (it only touches API present in every version). The SQL checks need a JDBC driver the
+harness can hand to the plugin, and [H2](https://h2database.com/) is used for that because it runs
+in memory and speaks MySQL mode; it is shaded into the **harness** jar only, never into the plugin.
 
 ```bash
 # from the repository root
-mkdir -p testing/harness/classes
-javac --release 8 -encoding UTF-8 -cp "$HOME/.m2/repository/org/spigotmc/spigot-api/1.8.8-R0.1-SNAPSHOT/spigot-api-1.8.8-R0.1-SNAPSHOT.jar" \
+mkdir -p testing/harness/classes testing/harness/lib
+curl -L -o testing/harness/lib/h2-1.4.200.jar \
+  https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
+
+javac --release 8 -encoding UTF-8 \
+  -cp "$HOME/.m2/repository/org/spigotmc/spigot-api/1.8.8-R0.1-SNAPSHOT/spigot-api-1.8.8-R0.1-SNAPSHOT.jar:testing/harness/lib/h2-1.4.200.jar" \
   -d testing/harness/classes testing/harness/src/jpvtest/StorageHarness.java
+
 cp testing/harness/plugin.yml testing/harness/classes/
+# shade the database driver into the harness jar (test-only)
+(cd testing/harness/classes && jar xf ../lib/h2-1.4.200.jar)
 jar cf testing/harness/VaultStorageHarness.jar -C testing/harness/classes .
 ```
 
 On Windows, run the same steps with `javac.exe` / `jar.exe` from any JDK 17+ and the API jar from
-`%USERPROFILE%\.m2\...`.
+`%USERPROFILE%\.m2\...` (separate classpath entries with `;`).
 
 ## 2. Run it
 
@@ -44,6 +53,10 @@ The harness runs on enable, prints the result and stops the server after two sec
 [VaultStorageHarness] HARNESS RESULT checks=N failures=0
 [VaultStorageHarness] HARNESS PASS
 ```
+
+On 1.8 the `Player` proxy cannot be created (`getHealth()` has incompatible return types in that
+API), so the player-driven checks are skipped there and reported as `CHECK SKIP`; everything else,
+including both storage backends and every command path, still runs.
 
 Remove `VaultStorageHarness.jar` for the bot test: the harness stops the server too early.
 

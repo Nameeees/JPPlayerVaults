@@ -1,6 +1,6 @@
 # SpigotMC submission pack
 
-Everything needed to publish JPPlayerVaults 1.0.0 as a **free** resource on SpigotMC.
+Everything needed to publish JPPlayerVaults 1.1.0 as a **free** resource on SpigotMC.
 Copy the BBCode block into the resource description field and fill the form with the values below.
 
 ---
@@ -12,11 +12,11 @@ Copy the BBCode block into the resource description field and fill the form with
 | Resource name | `JPPlayerVaults` |
 | Tagline | `Private, rank-based player vaults for 1.8 → 26.3. One jar, no dependencies, anti-dupe.` |
 | Category | `Tools and Utilities` (alternatives: `Gameplay` → `Mechanics`) |
-| Version | `1.0.0` |
+| Version | `1.1.0` |
 | Native Minecraft version | `26.3` (current latest at release time — update on every Minecraft release) |
 | Supported Minecraft versions | `1.8` through `26.3` (select the full range) |
 | Price | Free |
-| External download | No — upload `JPPlayerVaults-1.0.0.jar` directly |
+| External download | No — upload `JPPlayerVaults-1.1.0.jar` directly |
 | License | MIT (source is included and unobfuscated) |
 | Source / issues | `https://github.com/Nameeees/JPPlayerVaults` (source) · `https://nameeees.github.io/jpvaults-docs/` (docs) · `https://discord.gg/VQSvfQw8v8` (support) |
 | Tags (pick 4–5) | `player vaults`, `vaults`, `storage`, `enderchest`, `permissions` |
@@ -115,6 +115,8 @@ The same jar runs from Minecraft 1.8.8 to the latest release on Spigot, Paper an
 [*][B]Rank-based access.[/B] Give a rank [B]jpvaults.vaults.5[/B] and its players get 5 vaults. The plugin uses the highest number the player has, with a configurable default for players without any permission.
 [*][B]Built to protect items.[/B] Closing a vault waits for the file to be on disk, `Q` and outside clicks are blocked in the GUI, the off-hand swap is guarded, stale GUIs are closed on reload, and every save is written atomically.
 [*][B]Readable data.[/B] One YAML file per player ([B]data/<uuid>.yml[/B]) that an administrator can open, back up or repair. Lowering the vault size never deletes hidden rows.
+[*][B]Database storage, optional.[/B] Prefer MySQL or MariaDB? Set [B]storage.type: mysql[/B] and the plugin creates its two tables, writes every vault inside a transaction and keeps the server running (on YAML) if the database is down. [B]/pv admin migrate[/B] copies your existing files into the database.
+[*][B]Administrator tools.[/B] Open another player's vault — online or offline, by name or UUID — inspect a player or the plugin, wipe a single vault and migrate the storage. Everything is logged and sits behind [B]jpvaults.admin[/B].
 [*][B]Actually configurable.[/B] Size, default and maximum vault count, autosave, sounds, messages and language are all in config files. Every visible text lives in [B]messages_<language>.yml[/B], with English and Spanish included.
 [/LIST]
 
@@ -138,6 +140,10 @@ The same jar runs from Minecraft 1.8.8 to the latest release on Spigot, Paper an
 [TR][TD]/pv <number>[/TD][TD]Opens your vault with that number.[/TD][TD]jpvaults.use[/TD][/TR]
 [TR][TD]/pv or /pv help[/TD][TD]Shows the help and your available vaults.[/TD][TD]jpvaults.use[/TD][/TR]
 [TR][TD]/pv reload[/TD][TD]Reloads config.yml and the messages.[/TD][TD]jpvaults.reload[/TD][/TR]
+[TR][TD]/pv admin open <player|uuid> <number>[/TD][TD]Opens that player's vault (online or offline).[/TD][TD]jpvaults.admin[/TD][/TR]
+[TR][TD]/pv admin info [player|uuid][/TD][TD]Storage status or a report for one player.[/TD][TD]jpvaults.admin[/TD][/TR]
+[TR][TD]/pv admin delete <player|uuid> <number> confirm[/TD][TD]Wipes one vault.[/TD][TD]jpvaults.admin[/TD][/TR]
+[TR][TD]/pv admin migrate [force][/TD][TD]Copies the YAML files into the database.[/TD][TD]jpvaults.admin[/TD][/TR]
 [/TABLE]
 
 Aliases: [B]/playervaults[/B], [B]/jpvaults[/B].
@@ -148,6 +154,7 @@ Aliases: [B]/playervaults[/B], [B]/jpvaults[/B].
 [TR][TD]jpvaults.use[/TD][TD]Allows using /pv and opening your own vaults.[/TD][TD]true[/TD][/TR]
 [TR][TD]jpvaults.vaults.<n>[/TD][TD]Gives the rank access to n vaults; the highest number wins.[/TD][TD]false[/TD][/TR]
 [TR][TD]jpvaults.reload[/TD][TD]Allows /pv reload.[/TD][TD]OP[/TD][/TR]
+[TR][TD]jpvaults.admin[/TD][TD]Allows the /pv admin subcommands (open, info, delete, migrate).[/TD][TD]OP[/TD][/TR]
 [/TABLE]
 
 [B]LuckPerms example[/B]
@@ -172,8 +179,16 @@ vaults:
   max-amount: 10        # highest jpvaults.vaults.<n> checked
 
 storage:
+  type: yaml            # yaml or mysql (database over JDBC)
   folder: 'data'
   autosave-seconds: 300 # 0 disables autosave
+  mysql:                # only used when type is mysql
+    host: '127.0.0.1'
+    port: 3306
+    database: 'jpvaults'
+    username: 'root'
+    password: ''
+    table-prefix: 'jpvaults_'
 
 sounds:
   enabled: true
@@ -185,7 +200,7 @@ Invalid values are clamped and reported in the console instead of breaking the p
 
 [SIZE=5][B]Installation[/B][/SIZE]
 [LIST=1]
-[*]Drop [B]JPPlayerVaults-1.0.0.jar[/B] into the server's [B]plugins/[/B] folder.
+[*]Drop [B]JPPlayerVaults-1.1.0.jar[/B] into the server's [B]plugins/[/B] folder.
 [*]Start the server (or run [B]/reload confirm[/B]).
 [*]Grant [B]jpvaults.vaults.<n>[/B] to your ranks.
 [*]Adjust [B]plugins/JPPlayerVaults/config.yml[/B] if needed.
@@ -195,16 +210,18 @@ Invalid values are clamped and reported in the console instead of breaking the p
 [SIZE=5][B]Data safety[/B][/SIZE]
 Vaults usually hold a server's most valuable items, so the plugin is designed not to duplicate or lose them:
 [LIST]
-[*][B]Durable save on close.[/B] Closing a vault or quitting waits until the file is on disk. If the server dies right after, the content is already safe.
+[*][B]Durable save on close.[/B] Closing a vault or quitting waits until the data is written. If the server dies right after, the content is already safe.
 [*][B]Q and Ctrl+Q blocked[/B] in the vault GUI; clicks outside the window do not drop the cursor item.
 [*][B]Off-hand key (F)[/B] is cancelled while a vault is open; the classic 1.16.x cursor desync is blocked.
 [*][B]No zombie GUIs[/B]: open vaults are closed on reload, and surviving views are closed on enable.
-[*][B]Atomic writes[/B]: every save writes a .tmp file and moves it over the real file.
-[*][B]No cross-session cache[/B]: data is read from disk on open and dropped on quit.
+[*][B]Atomic writes[/B] on YAML: every save writes a .tmp file and moves it over the real file. On a database, every vault is written inside a transaction.
+[*][B]One viewer per vault[/B]: an administrator cannot open a vault its owner has open, and a vault that is open cannot be deleted.
+[*][B]No empty vaults on errors[/B]: if stored data cannot be read, the plugin refuses to open the vault and tells the player to contact an administrator, instead of showing it empty and overwriting the real items on the next save.
+[*][B]No cross-session cache[/B]: data is read from storage on open and dropped on quit.
 [*][B]Autosave[/B] limits the loss if the server crashes while a vault is open.
 [/LIST]
 
-[B]Known limits, stated plainly:[/B] if the process is killed while a player has a vault open, the last save is restored (hence autosave); saving on every click would tax the whole server. Do not share one data/ folder between several running servers — the plugin does not sync servers live.
+[B]Known limits, stated plainly:[/B] if the process is killed while a player has a vault open, the last save is restored (hence autosave); saving on every click would tax the whole server. Do not share one data/ folder (or one database) between several running servers — the plugin does not sync servers live.
 
 [SIZE=5][B]Compatibility[/B][/SIZE]
 [TABLE]
@@ -225,13 +242,16 @@ No. Access is controlled only by permissions.
 Raise [B]vaults.max-amount[/B] (up to 100) and grant the permission with that number.
 
 [B]Can I edit a player's vault from the console?[/B]
-The data is plain YAML in [B]plugins/JPPlayerVaults/data/<uuid>.yml[/B]. Stop the server (or have the player quit) before editing it. An in-game admin editor is not part of 1.0.
+Yes. [B]/pv admin open <player|uuid> <number>[/B] opens it in game, and [B]/pv admin info[/B] shows what a player has stored. On YAML storage you can also edit [B]plugins/JPPlayerVaults/data/<uuid>.yml[/B] with the server stopped or the player offline.
 
 [B]What happens if the server crashes while a vault is open?[/B]
 The last save is restored. Autosave (300 seconds by default) limits how much can be lost.
 
-[B]Does it work with Folia or with MySQL?[/B]
-No, neither is supported; the plugin is a normal Bukkit plugin with YAML storage.
+[B]Does it work with MySQL?[/B]
+Yes, optionally: [B]storage.type: mysql[/B] stores the vaults in a database over JDBC (MySQL, MariaDB or anything compatible). YAML stays the default, and [B]/pv admin migrate[/B] copies your existing files into the database. If the database is unreachable the plugin logs the error and keeps running on YAML instead of leaving the server without vaults.
+
+[B]Does it work with Folia?[/B]
+No, it is a normal Bukkit plugin that uses the regular scheduler.
 
 [B]Can I translate it?[/B]
 Yes. Copy [B]messages_en.yml[/B] to [B]messages_<code>.yml[/B], translate it and set [B]language: <code>[/B]. Missing keys fall back to English and the console lists them.
@@ -248,9 +268,9 @@ MIT. You may use, modify and redistribute the plugin, including on commercial se
 
 ## 4. Before pressing “Submit”
 
-- [ ] `mvn clean package` produces `target/JPPlayerVaults-1.0.0.jar`.
+- [ ] `mvn clean package` produces `target/JPPlayerVaults-1.1.0.jar`.
 - [ ] The jar was tested on a **fresh** server folder (no leftover config) on the latest Minecraft.
-- [ ] `plugin.yml` shows version `1.0.0` (it is filtered from `pom.xml`).
+- [ ] `plugin.yml` shows version `1.1.0` (it is filtered from `pom.xml`).
 - [ ] The description above is pasted and renders correctly in the preview.
 - [ ] The seven infographics from section 2.1 are uploaded and placed as suggested.
 - [ ] At least 3 real in-game screenshots are uploaded (section 2.2).

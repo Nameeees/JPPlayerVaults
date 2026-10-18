@@ -34,3 +34,40 @@ command:
   invalid-number: "{prefix}&f{input} &cis not a valid vault number. Try &f/pv 1&c."
   no-vaults: "{prefix}&cYou don't have any vaults assigned. Ask an administrator."
   locked: "{prefix}&cVault &f#{number} &cis locked. Your rank allows &f{available}&c."
+  storage-error: "{prefix}&cYour vault data could not be read. Ask an administrator to check the console."
+
+admin:
+  # /pv admin without a subcommand.
+  help:
+    - "&8&m         &r &a&lVaults &8» &7Admin &8&m         "
+    - ""
+    - "&8» &f/pv admin open <player|uuid> <number>&7 — Open someone's vault."
+    - "&8» &f/pv admin info [player]&7 — Plugin status or a player report."
+    - "&8» &f/pv admin delete <player|uuid> <number> confirm&7 — Wipe that vault."
+    - "&8» &f/pv admin migrate [force]&7 — Copy the YAML files into the database."
+  unknown: "{prefix}&cUnknown subcommand: &f{input}&c."
+  open-usage: "{prefix}&7Usage: &f/pv admin open <player|uuid> <number>&7."
+  delete-usage: "{prefix}&7Usage: &f/pv admin delete <player|uuid> <number> confirm&7."
+  player-not-found: "{prefix}&cI can't find &f{player}&c. They must have played here before."
+  invalid-number: "{prefix}&cInvalid vault number: &f{input}&c."
+  vault-open: "{prefix}&cThat vault is open right now by &f{player}&c."
+  opened: "{prefix}&aOpened vault &f#{number}&a of &f{player}&a."
+  delete-done: "{prefix}&aDeleted vault &f#{number}&a of &f{player}&a."
+  delete-failed: "{prefix}&cThat vault could not be deleted (it is open, or the storage failed)."
+  # Title used when an administrator opens someone else's vault.
+  vault-title: "&8» &a&lVault &f#{number} &8« &7{player}"
+  info:
+    header: "&8&m         &r &a&lVaults &8» &7Status &8&m         "
+    storage: "{prefix}&7Storage: &f{type}&7 → &f{target}&7."
+    players: "{prefix}&7Players with data: &f{players}&7."
+    settings: "{prefix}&7Size: &f{size}&7 · Default: &f{default}&7 · Max per rank: &f{max}&7 · Autosave: &f{autosave}s&7."
+    player-header: "&8&m         &r &a&lVaults &8» &7{player} &8&m         "
+    player-id: "{prefix}&7UUID: &f{uuid}&7 · State: &f{state}&7."
+    player-vaults: "{prefix}&7Vaults with items: &f{used}&7 · Stored items: &f{items}&7."
+    player-rank: "{prefix}&7Rank: can open &f{available}&7 vaults."
+    player-open: "{prefix}&7Open right now: &f{open}&7."
+  migrate:
+    start: "{prefix}&7Migrating &f{total}&7 player(s) from YAML to the database&7 (already stored: &f{skipped}&7)…"
+    progress: "{prefix}&7Progress: &f{done}&7/&f{total}&7."
+    done: "{prefix}&aMigration finished: &f{migrated}&a player(s), &f{vaults}&a vault(s), &f{items}&a item(s). Already stored: &f{skipped}&a. Errors: &f{failed}&a."
+    not-sql: "{prefix}&cMigration only applies with storage.type: mysql (currently &f{type}&c)."

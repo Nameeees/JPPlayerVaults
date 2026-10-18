@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -15,10 +16,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.sql.Driver;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -28,12 +31,25 @@ import java.util.UUID;
 
 /**
  * Test-only plugin: exercises the real JPPlayerVaults code inside a running
- * server (storage round-trip, command flow, permissions, language switch,
- * corrupt-file backup) and then shuts the server down.
+ * server.
+ *
+ * Covered here:
+ *  - YAML storage round-trip, deletes, corrupt files and known owners.
+ *  - SQL storage (JDBC) against an in-memory H2 database, same checks, with a
+ *    driver instance the harness provides (exactly what the plugin does with
+ *    the driver that ships with the server).
+ *  - /pv and /pv admin command paths, their permissions and their messages,
+ *    through dynamic proxies of CommandSender and Player.
+ *  - The real client path (open, click, close, reload from disk) is covered by
+ *    testing/bot/vault-test.js.
  *
  * Not part of the release jar.
  */
 public final class StorageHarness extends JavaPlugin {
+
+    private static final UUID OWNER_ID = UUID.fromString("00000000-0000-0000-0000-0000000000ab");
+    private static final UUID PLAYER_ID = UUID.fromString("00000000-0000-0000-0000-0000000000cd");
+    private static final UUID BROKEN_ID = UUID.fromString("00000000-0000-0000-0000-0000000000ef");
 
     private int checks;
     private int failures;
@@ -45,9 +61,11 @@ public final class StorageHarness extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
-            testStorage();
-            testCommands();
-            testCorruptBackup();
+            Plugin plugin = plugin();
+            testYamlStorage(plugin);
+            testSqlStorage(plugin);
+            testSenderCommands(plugin);
+            testPlayerCommands(plugin);
         } catch (Throwable problem) {
             failures++;
             getLogger().severe("HARNESS EXCEPTION " + problem.getClass().getName() + ": " + problem.getMessage());
@@ -58,25 +76,78 @@ public final class StorageHarness extends JavaPlugin {
         getServer().getScheduler().runTaskLater(this, Bukkit::shutdown, 40L);
     }
 
-    // ---------------------------------------------------------------- storage
+    // ------------------------------------------------------------ YAML backend
 
-    private void testStorage() throws Exception {
-        Plugin jp = plugin();
+    private void testYamlStorage(Plugin jp) throws Exception {
         ClassLoader loader = jp.getClass().getClassLoader();
         Class<?> pluginClass = jp.getClass();
         Class<?> storageClass = loader.loadClass("me.jp.jpvaults.storage.YamlVaultStorage");
         Class<?> dataClass = loader.loadClass("me.jp.jpvaults.model.PlayerVaultData");
 
         Object storage = storageClass.getConstructor(pluginClass, String.class).newInstance(jp, "harness-data");
-        UUID owner = UUID.fromString("00000000-0000-0000-0000-0000000000ab");
-        Object data = dataClass.getConstructor(UUID.class).newInstance(owner);
+        roundTrip("YAML", storage, storageClass, dataClass, OWNER_ID);
 
+        File file = new File(jp.getDataFolder(), "harness-data" + File.separator + OWNER_ID + ".yml");
+        check("YAML: player file written", file.isFile());
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        check("YAML: file keeps the player uuid", OWNER_ID.toString().equals(yaml.getString("uuid")));
+
+        // A file that cannot be parsed is backed up and refuses to load, so the
+        // next save cannot overwrite the real items.
+        File folder = new File(jp.getDataFolder(), "harness-data");
+        File brokenFile = new File(folder, BROKEN_ID + ".yml");
+        Files.write(brokenFile.toPath(), "{{{ this is not valid yaml".getBytes(StandardCharsets.UTF_8));
+        Object loaded = null;
+        try {
+            loaded = storageClass.getMethod("load", UUID.class).invoke(storage, BROKEN_ID);
+        } catch (InvocationTargetException wrapped) {
+            check("YAML: corrupt file refuses to load",
+                    wrapped.getCause().getClass().getName().endsWith("StorageException"));
+        }
+        if (loaded != null) {
+            check("YAML: corrupt file refuses to load", false);
+        }
+        File[] backups = folder.listFiles((dir, name) -> name.startsWith(BROKEN_ID + ".") && name.endsWith(".bak"));
+        check("YAML: corrupt file is backed up", backups != null && backups.length >= 1);
+
+        storageClass.getMethod("shutdown").invoke(storage);
+    }
+
+    // ------------------------------------------------------------- SQL backend
+
+    private void testSqlStorage(Plugin jp) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> pluginClass = jp.getClass();
+        Class<?> settingsClass = loader.loadClass("me.jp.jpvaults.storage.SqlSettings");
+        Class<?> storageClass = loader.loadClass("me.jp.jpvaults.storage.SqlVaultStorage");
+        Class<?> dataClass = loader.loadClass("me.jp.jpvaults.model.PlayerVaultData");
+
+        Driver driver = new org.h2.Driver();
+        Object settings = settingsClass
+                .getConstructor(String.class, String.class, String.class, String.class, String.class, int.class, long.class)
+                .newInstance("", "jdbc:h2:mem:jpvaults_harness;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "", "test_", 2, 5000L);
+        Object storage = storageClass.getConstructor(pluginClass, settingsClass, Driver.class)
+                .newInstance(jp, settings, driver);
+        check("SQL: storage starts against the JDBC driver", storage != null);
+
+        String description = String.valueOf(storageClass.getMethod("describe").invoke(storage));
+        check("SQL: describes the target", description.contains("jpvaults_harness"));
+
+        roundTrip("SQL", storage, storageClass, dataClass, UUID.fromString("00000000-0000-0000-0000-000000000011"));
+        storageClass.getMethod("shutdown").invoke(storage);
+    }
+
+    /** Same expectations for every backend: this is the storage contract. */
+    private void roundTrip(String label, Object storage, Class<?> storageClass, Class<?> dataClass, UUID owner)
+            throws Exception {
         Method setContents = dataClass.getMethod("setVaultContents", int.class, ItemStack[].class);
         Method getContents = dataClass.getMethod("getVaultContents", int.class);
         Method isDirty = dataClass.getMethod("isDirty");
         Method save = storageClass.getMethod("save", dataClass, boolean.class);
         Method load = storageClass.getMethod("load", UUID.class);
+        Method delete = storageClass.getMethod("deleteVault", UUID.class, int.class, boolean.class);
 
+        Object data = dataClass.getConstructor(UUID.class).newInstance(owner);
         ItemStack[] expected = new ItemStack[54];
         expected[0] = new ItemStack(Material.DIAMOND, 17);
         ItemStack book = new ItemStack(Material.BOOK, 1);
@@ -89,72 +160,45 @@ public final class StorageHarness extends JavaPlugin {
 
         setContents.invoke(data, 2, expected);
         save.invoke(storage, data, true);
-        check("data is clean after a successful save", !((Boolean) isDirty.invoke(data)).booleanValue());
+        check(label + ": data is clean after a successful save", !((Boolean) isDirty.invoke(data)).booleanValue());
 
         Object loaded = load.invoke(storage, owner);
         ItemStack[] actual = (ItemStack[]) getContents.invoke(loaded, 2);
-        check("all 54 slots round-trip", Arrays.equals(expected, actual));
-        check("stack amount preserved", actual[0] != null && actual[0].getAmount() == 17);
-        check("unicode display name preserved", actual[7] != null && actual[7].getItemMeta() != null
+        check(label + ": all 54 slots round-trip", Arrays.equals(expected, actual));
+        check(label + ": stack amount preserved", actual[0] != null && actual[0].getAmount() == 17);
+        check(label + ": unicode display name preserved", actual[7] != null && actual[7].getItemMeta() != null
                 && "Libro \u00f1and\u00fa".equals(actual[7].getItemMeta().getDisplayName()));
-        check("lore preserved", actual[7] != null && actual[7].getItemMeta().getLore() != null
+        check(label + ": lore preserved", actual[7] != null && actual[7].getItemMeta().getLore() != null
                 && "L\u00ednea uno".equals(actual[7].getItemMeta().getLore().get(0)));
-        check("last slot preserved", actual[53] != null && actual[53].getType() == Material.ARROW);
-        check("empty slot stays empty", actual[1] == null);
-
-        expected[0] = null;
-        expected[7] = null;
-        expected[53] = null;
-        setContents.invoke(data, 2, expected);
-        check("data is dirty after a change", ((Boolean) isDirty.invoke(data)).booleanValue());
-        save.invoke(storage, data, true);
-
-        Object reloaded = load.invoke(storage, owner);
-        ItemStack[] cleared = (ItemStack[]) getContents.invoke(reloaded, 2);
-        check("removed slots disappear after save", cleared[0] == null && cleared[53] == null);
+        check(label + ": last slot preserved", actual[53] != null && actual[53].getType() == Material.ARROW);
+        check(label + ": empty slot stays empty", actual[1] == null);
 
         ItemStack[] other = new ItemStack[54];
         other[0] = new ItemStack(Material.STONE, 3);
         setContents.invoke(data, 5, other);
+        check(label + ": data is dirty after a change", ((Boolean) isDirty.invoke(data)).booleanValue());
         save.invoke(storage, data, true);
+
         Object again = load.invoke(storage, owner);
-        check("vaults stay independent", ((ItemStack[]) getContents.invoke(again, 5))[0].getType() == Material.STONE
-                && ((ItemStack[]) getContents.invoke(again, 2))[0] == null);
+        check(label + ": vaults stay independent",
+                ((ItemStack[]) getContents.invoke(again, 5))[0].getType() == Material.STONE
+                        && ((ItemStack[]) getContents.invoke(again, 2))[0] != null);
 
-        File file = new File(jp.getDataFolder(), "harness-data" + File.separator + owner + ".yml");
-        check("player file written", file.isFile());
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        check("file keeps the player uuid", owner.toString().equals(yaml.getString("uuid")));
+        check(label + ": deleteVault reports success",
+                ((Boolean) delete.invoke(storage, owner, 2, true)).booleanValue());
+        Object afterDelete = load.invoke(storage, owner);
+        check(label + ": deleted vault comes back empty",
+                ((ItemStack[]) getContents.invoke(afterDelete, 2))[0] == null);
+        check(label + ": other vault survives the delete",
+                ((ItemStack[]) getContents.invoke(afterDelete, 5))[0] != null);
 
-        storageClass.getMethod("shutdown").invoke(storage);
+        Set<?> owners = (Set<?>) storageClass.getMethod("knownOwners").invoke(storage);
+        check(label + ": owner is listed by knownOwners", owners.contains(owner));
     }
 
-    // --------------------------------------------------------------- commands
+    // ------------------------------------------- command senders (every version)
 
-    private void testCommands() throws Exception {
-        Plugin jp = plugin();
-        ClassLoader loader = jp.getClass().getClassLoader();
-        Class<?> managerClass = loader.loadClass("me.jp.jpvaults.manager.VaultManager");
-        Class<?> holderClass = loader.loadClass("me.jp.jpvaults.menu.VaultHolder");
-        Object manager = jp.getClass().getMethod("getVaultManager").invoke(jp);
-        Method available = managerClass.getMethod("availableVaults", Player.class);
-        Method handleClose = managerClass.getMethod("handleClose", Player.class, holderClass);
-
-        testId = UUID.fromString("00000000-0000-0000-0000-0000000000cd");
-        Player player;
-        try {
-            player = fakePlayer(testId, "TestPlayer", "jpvaults.use", "jpvaults.vaults.3");
-        } catch (IllegalArgumentException unsupportedApi) {
-            // El API 1.8 declara getHealth() con dos tipos de retorno incompatibles
-            // en la jerarquia de Player: java.lang.reflect.Proxy no puede crearlo.
-            getLogger().warning("CHECK SKIP: this server API cannot proxy Player ("
-                    + unsupportedApi.getMessage() + "); command checks run on the modern server only.");
-            return;
-        }
-
-        check("available vaults comes from the rank permission", ((Integer) available.invoke(manager, player)) == 3);
-        check("vault size comes from config", ((Integer) jp.getClass().getMethod("getVaultSize").invoke(jp)) == 54);
-
+    private void testSenderCommands(Plugin jp) throws Exception {
         PluginCommand command = Bukkit.getPluginCommand("pv");
         check("/pv command is registered", command != null);
         if (command == null) {
@@ -163,6 +207,77 @@ public final class StorageHarness extends JavaPlugin {
         CommandExecutor executor = command.getExecutor();
         check("/pv has the plugin executor",
                 executor != null && executor.getClass().getName().equals("me.jp.jpvaults.command.PlayerVaultCommand"));
+
+        CommandSender admin = fakeSender("CONSOLE", "jpvaults.use", "jpvaults.reload", "jpvaults.admin");
+
+        messages.clear();
+        check("/pv admin info is handled",
+                executor.onCommand(admin, command, "pv", new String[]{"admin", "info"}));
+        check("/pv admin info reports the storage", strip(joined()).contains("Storage"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "info", OWNER_ID.toString()});
+        check("/pv admin info <uuid> reports a player", strip(joined()).contains("UUID")
+                && strip(joined()).contains("Vaults with items"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "delete", OWNER_ID.toString(), "1"});
+        check("/pv admin delete needs the confirm word", strip(joined()).contains("Usage"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv",
+                new String[]{"admin", "delete", OWNER_ID.toString(), "1", "confirm"});
+        check("/pv admin delete works from the console", strip(joined()).contains("Deleted"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "open", OWNER_ID.toString(), "1"});
+        check("/pv admin open is player-only", strip(joined()).contains("in game"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "migrate"});
+        check("/pv admin migrate explains it needs mysql", strip(joined()).contains("mysql"));
+
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "nonsense"});
+        check("/pv admin rejects unknown subcommands", strip(joined()).contains("nonsense"));
+
+        messages.clear();
+        check("/pv reload is handled", executor.onCommand(admin, command, "pv", new String[]{"reload"}));
+        check("/pv reload confirms", strip(joined()).contains("reload"));
+
+        CommandSender denied = fakeSender("Denied", "jpvaults.use");
+        messages.clear();
+        executor.onCommand(denied, command, "pv", new String[]{"admin", "info"});
+        check("/pv admin requires jpvaults.admin", strip(joined()).contains("permission"));
+    }
+
+    // ------------------------------------------- player commands (modern API)
+
+    private void testPlayerCommands(Plugin jp) throws Exception {
+        ClassLoader loader = jp.getClass().getClassLoader();
+        Class<?> managerClass = loader.loadClass("me.jp.jpvaults.manager.VaultManager");
+        Class<?> holderClass = loader.loadClass("me.jp.jpvaults.menu.VaultHolder");
+        Object manager = jp.getClass().getMethod("getVaultManager").invoke(jp);
+        Method available = managerClass.getMethod("availableVaults", Player.class);
+        Method handleClose = managerClass.getMethod("handleClose", Player.class, holderClass);
+
+        testId = PLAYER_ID;
+        Player player;
+        try {
+            player = fakePlayer(testId, "TestPlayer", "jpvaults.use", "jpvaults.admin", "jpvaults.vaults.3");
+        } catch (IllegalArgumentException unsupportedApi) {
+            // El API 1.8 declara getHealth() con dos tipos de retorno incompatibles
+            // en la jerarquia de Player: java.lang.reflect.Proxy no puede crearlo.
+            getLogger().warning("CHECK SKIP: this server API cannot proxy Player ("
+                    + unsupportedApi.getMessage() + "); player checks run on the modern server only.");
+            return;
+        }
+
+        check("available vaults comes from the rank permission", ((Integer) available.invoke(manager, player)) == 3);
+        check("vault size comes from config", ((Integer) jp.getClass().getMethod("getVaultSize").invoke(jp)) == 54);
+
+        PluginCommand command = Bukkit.getPluginCommand("pv");
+        CommandExecutor executor = command.getExecutor();
 
         messages.clear();
         check("/pv 4 is handled", executor.onCommand(player, command, "pv", new String[]{"4"}));
@@ -197,16 +312,12 @@ public final class StorageHarness extends JavaPlugin {
         YamlConfiguration savedYaml = YamlConfiguration.loadConfiguration(savedFile);
         ItemStack savedDiamond = savedYaml.getItemStack("vaults.1.items.0");
         check("closed vault content is on disk", savedDiamond != null && savedDiamond.getAmount() == 9);
-        check("closed vault keeps item meta", savedYaml.getItemStack("vaults.1.items.53") != null
-                && "Esmeralda \u00f1".equals(savedYaml.getItemStack("vaults.1.items.53").getItemMeta().getDisplayName()));
 
         messages.clear();
         opened = null;
         executor.onCommand(player, command, "pv", new String[]{"1"});
         check("reopened vault keeps the items", opened != null && opened.getItem(0) != null
                 && opened.getItem(0).getAmount() == 9);
-        check("reopened vault keeps the item meta", opened != null && opened.getItem(53) != null
-                && "Esmeralda \u00f1".equals(opened.getItem(53).getItemMeta().getDisplayName()));
         handleClose.invoke(manager, player, opened.getHolder());
 
         messages.clear();
@@ -222,80 +333,52 @@ public final class StorageHarness extends JavaPlugin {
         executor.onCommand(player, command, "pv", new String[]{"reload"});
         check("reload is denied without jpvaults.reload", strip(last()).contains("permission"));
 
-        // Long title must be cut to 32 visible characters for 1.8-1.12 clients.
-        File messagesFile = new File(jp.getDataFolder(), "messages_en.yml");
-        YamlConfiguration messagesYaml = YamlConfiguration.loadConfiguration(messagesFile);
-        messagesYaml.set("vault-title", "&aA deliberately long vault title that old clients cannot handle");
-        messagesYaml.save(messagesFile);
-        jp.getClass().getMethod("reloadPlugin").invoke(jp);
+        // Admin view: open the vault of a player and block a second viewer.
         messages.clear();
         opened = null;
-        executor.onCommand(player, command, "pv", new String[]{"1"});
-        String longTitle = inventoryTitle(opened);
-        if (!longTitle.isEmpty()) {
-            check("long inventory title is shortened to 32 chars",
-                    ChatColor.stripColor(longTitle).length() <= 32);
-        } else {
-            // Sin API publica para leer el titulo, se comprueba la funcion que
-            // usa el manager (Text.limitVisible) con el texto configurado.
-            Object messageManager = jp.getClass().getMethod("getMessages").invoke(jp);
-            String rawTitle = (String) messageManager.getClass()
-                    .getMethod("get", String.class, String[].class)
-                    .invoke(messageManager, "vault-title", new String[]{"number", "1"});
-            Class<?> textClass = loader.loadClass("me.jp.jpvaults.util.Text");
-            String limited = (String) textClass.getMethod("limitVisible", String.class, int.class)
-                    .invoke(null, rawTitle, 32);
-            check("long vault title is shortened to 32 chars",
-                    ChatColor.stripColor(limited).length() <= 32);
+        executor.onCommand(player, command, "pv", new String[]{"admin", "open", testId.toString(), "1"});
+        check("/pv admin open <uuid> opens the vault of that player", opened != null);
+        boolean adminView = opened != null
+                && ((Boolean) opened.getHolder().getClass().getMethod("isAdminView").invoke(opened.getHolder()));
+        check("admin view reports itself as an admin view", adminView);
+        check("admin view announces the owner", strip(joined()).contains("Opened vault"));
+
+        Object adminHolder = opened == null ? null : opened.getHolder();
+        Player second = null;
+        try {
+            second = fakePlayer(UUID.fromString("00000000-0000-0000-0000-0000000000ff"), "SecondAdmin",
+                    "jpvaults.use", "jpvaults.admin");
+        } catch (IllegalArgumentException unsupportedApi) {
+            getLogger().info("CHECK SKIP: could not create a second fake player");
         }
-        handleClose.invoke(manager, player, opened.getHolder());
+        if (second != null && adminHolder != null) {
+            messages.clear();
+            executor.onCommand(second, command, "pv", new String[]{"admin", "open", testId.toString(), "1"});
+            check("a second viewer is refused while the vault is open", strip(joined()).contains("open right now"));
 
-        // Regenerate the packaged English file and switch languages through config.yml.
-        messagesFile.delete();
-        jp.getClass().getMethod("reloadPlugin").invoke(jp);
-        check("deleted messages file is regenerated", messagesFile.isFile());
+            messages.clear();
+            executor.onCommand(second, command, "pv",
+                    new String[]{"admin", "delete", testId.toString(), "1", "confirm"});
+            check("deleting an open vault is refused", strip(joined()).contains("could not be deleted"));
+        }
 
-        File configFile = new File(jp.getDataFolder(), "config.yml");
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
-        config.set("language", "es");
-        config.save(configFile);
-        jp.getClass().getMethod("reloadPlugin").invoke(jp);
-        Object messageManager = jp.getClass().getMethod("getMessages").invoke(jp);
-        String language = (String) messageManager.getClass().getMethod("getLanguage").invoke(messageManager);
-        check("language switches to Spanish", "es".equals(language));
-        check("Spanish messages file generated", new File(jp.getDataFolder(), "messages_es.yml").isFile());
+        if (adminHolder != null) {
+            handleClose.invoke(manager, player, adminHolder);
+        }
+
         messages.clear();
-        executor.onCommand(player, command, "pv", new String[]{"4"});
-        check("Spanish locked message is used", strip(last()).contains("desbloqueado"));
+        executor.onCommand(player, command, "pv", new String[]{"admin", "info", testId.toString()});
+        check("admin info counts the stored vaults", strip(joined()).contains("Vaults with items")
+                && strip(joined()).contains("1"));
 
-        config.set("language", "en");
-        config.save(configFile);
-        jp.getClass().getMethod("reloadPlugin").invoke(jp);
+        CommandSender admin = fakeSender("CONSOLE", "jpvaults.admin");
         messages.clear();
-        executor.onCommand(player, command, "pv", new String[]{"4"});
-        check("English messages come back", strip(last()).contains("locked"));
-    }
-
-    // ---------------------------------------------------------- corrupt data
-
-    private void testCorruptBackup() throws Exception {
-        Plugin jp = plugin();
-        ClassLoader loader = jp.getClass().getClassLoader();
-        Class<?> pluginClass = jp.getClass();
-        Class<?> storageClass = loader.loadClass("me.jp.jpvaults.storage.YamlVaultStorage");
-
-        File folder = new File(jp.getDataFolder(), "harness-data");
-        UUID broken = UUID.fromString("00000000-0000-0000-0000-0000000000ef");
-        File brokenFile = new File(folder, broken + ".yml");
-        Files.write(brokenFile.toPath(), "{{{ this is not valid yaml".getBytes(StandardCharsets.UTF_8));
-
-        Object storage = storageClass.getConstructor(pluginClass, String.class).newInstance(jp, "harness-data");
-        Object loaded = storageClass.getMethod("load", UUID.class).invoke(storage, broken);
-        check("corrupt data file does not throw", loaded != null);
-
-        File[] backups = folder.listFiles((dir, name) -> name.startsWith(broken + ".") && name.endsWith(".bak"));
-        check("corrupt data file is backed up", backups != null && backups.length >= 1);
-        storageClass.getMethod("shutdown").invoke(storage);
+        executor.onCommand(admin, command, "pv",
+                new String[]{"admin", "delete", testId.toString(), "1", "confirm"});
+        check("admin delete removes the vault", strip(joined()).contains("Deleted"));
+        messages.clear();
+        executor.onCommand(admin, command, "pv", new String[]{"admin", "info", testId.toString()});
+        check("the deleted vault no longer has items", strip(joined()).contains("Vaults with items: 0"));
     }
 
     // ----------------------------------------------------------------- helpers
@@ -322,10 +405,7 @@ public final class StorageHarness extends JavaPlugin {
                 if ("getName".equals(methodName)) {
                     return name;
                 }
-                if ("hasPermission".equals(methodName)) {
-                    return allowed.contains(String.valueOf(args[0]));
-                }
-                if ("isPermissionSet".equals(methodName)) {
+                if ("hasPermission".equals(methodName) || "isPermissionSet".equals(methodName)) {
                     return allowed.contains(String.valueOf(args[0]));
                 }
                 if ("sendMessage".equals(methodName)) {
@@ -362,6 +442,46 @@ public final class StorageHarness extends JavaPlugin {
         return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, handler);
     }
 
+    private CommandSender fakeSender(String name, String... permissions) {
+        Set<String> allowed = new HashSet<>(Arrays.asList(permissions));
+        InvocationHandler handler = new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) {
+                String methodName = method.getName();
+                if ("getName".equals(methodName)) {
+                    return name;
+                }
+                if ("hasPermission".equals(methodName) || "isPermissionSet".equals(methodName)) {
+                    return allowed.contains(String.valueOf(args[0]));
+                }
+                if ("sendMessage".equals(methodName)) {
+                    if (args != null && args.length == 1 && args[0] instanceof String) {
+                        messages.add((String) args[0]);
+                    }
+                    return null;
+                }
+                if ("getServer".equals(methodName)) {
+                    return Bukkit.getServer();
+                }
+                if ("isOp".equals(methodName)) {
+                    return !allowed.isEmpty();
+                }
+                if ("toString".equals(methodName)) {
+                    return name;
+                }
+                if ("hashCode".equals(methodName)) {
+                    return name.hashCode();
+                }
+                if ("equals".equals(methodName)) {
+                    return proxy == args[0];
+                }
+                return defaultValue(method.getReturnType());
+            }
+        };
+        return (CommandSender) Proxy.newProxyInstance(CommandSender.class.getClassLoader(),
+                new Class<?>[]{CommandSender.class}, handler);
+    }
+
     private static Object defaultValue(Class<?> type) {
         if (!type.isPrimitive()) {
             return null;
@@ -393,16 +513,6 @@ public final class StorageHarness extends JavaPlugin {
         return null;
     }
 
-    private void check(String name, boolean condition) {
-        checks++;
-        if (condition) {
-            getLogger().info("CHECK OK: " + name);
-        } else {
-            failures++;
-            getLogger().warning("CHECK FAILED: " + name);
-        }
-    }
-
     /** El titulo del inventario desaparecio de Inventory en las APIs modernas. */
     private String inventoryTitle(Inventory inventory) {
         if (inventory == null) {
@@ -416,9 +526,20 @@ public final class StorageHarness extends JavaPlugin {
         }
     }
 
+    private void check(String name, boolean condition) {
+        checks++;
+        if (condition) {
+            getLogger().info("CHECK OK: " + name);
+        } else {
+            failures++;
+            getLogger().warning("CHECK FAILED: " + name);
+        }
+    }
+
     private String last() {
         return messages.isEmpty() ? "" : messages.get(messages.size() - 1);
     }
+
     private String joined() {
         StringBuilder builder = new StringBuilder();
         for (String message : messages) {

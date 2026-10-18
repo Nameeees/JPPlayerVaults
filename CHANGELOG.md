@@ -4,6 +4,37 @@ All notable changes to JPPlayerVaults are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-18
+
+Database storage and administrator tools.
+
+### Added
+
+- **Optional SQL storage** (`storage.type: mysql`) alongside the YAML files. Any database reachable
+  over JDBC works; MySQL and MariaDB are preconfigured, tables are created automatically and the
+  data is written in transactions (one row per vault).
+- **`/pv admin` subcommands**, all behind the new `jpvaults.admin` permission (OP by default):
+    - `/pv admin open <player|uuid> <number>` — open another player's vault, online or offline.
+    - `/pv admin info [player]` — plugin status (storage, players with data, settings) or a report
+      for one player: UUID, state, vaults with items, stored items, rank and who has it open.
+    - `/pv admin delete <player|uuid> <number> confirm` — wipe one vault.
+    - `/pv admin migrate [force]` — copy the YAML files into the database, in batches, without
+      deleting the originals.
+- Storage settings in `config.yml`: host, port, database, credentials, table prefix, pool size,
+  connection timeout, driver class and a raw JDBC URL for other engines.
+- `StorageException`: when stored data cannot be read, the plugin now refuses to open the vault and
+  tells the player to contact an administrator, instead of showing an empty vault that the next save
+  would write over the real items.
+- `/pv reload` reports when storage settings changed and a restart is needed.
+
+### Changed
+
+- The YAML backend implements the new storage contract (`deleteVault`, `knownOwners`, `describe`).
+- A vault can only be open for one person at a time, so an administrator cannot edit a vault while
+  its owner has it open (and vice versa).
+- Player files that cannot be parsed are still backed up as `<name>.<timestamp>.bak`, and now also
+  refuse to load until an administrator restores them.
+
 ## [1.0.0] - 2026-10-18
 
 First public release.

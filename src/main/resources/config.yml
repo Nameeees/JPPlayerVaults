@@ -26,13 +26,44 @@ vaults:
   max-amount: 10
 
 storage:
+  # Where the vaults are stored: 'yaml' (one file per player) or
+  # 'mysql' (any database reachable over JDBC, MySQL/MariaDB by
+  # default). Changing this requires a server restart.
+  type: yaml
   # Folder (inside plugins/JPPlayerVaults) with each player's
-  # data. Changing it requires a server restart.
+  # data. Used by the yaml backend and as the source of
+  # '/pv admin migrate'.
   folder: 'data'
   # Autosave of the open vaults, in seconds.
   # 0 = disabled (vaults are still saved on close, quit and
   # server shutdown).
   autosave-seconds: 300
+
+  # Only used when type is 'mysql'. If the database cannot be
+  # reached the plugin logs the error and keeps working with
+  # YAML, so the server never ends up without vaults; fix these
+  # values, restart and run '/pv admin migrate'.
+  mysql:
+    host: '127.0.0.1'
+    port: 3306
+    database: 'jpvaults'
+    username: 'root'
+    password: ''
+    # Tables are created automatically: <prefix>players and
+    # <prefix>vaults. Letters, digits and '_' only.
+    table-prefix: 'jpvaults_'
+    # Extra JDBC URL parameters (MySQL syntax).
+    properties: 'useSSL=false&characterEncoding=utf8'
+    # Empty = full URL built from host/port/database/properties.
+    # Set it for another engine, e.g. 'jdbc:mariadb://...'.
+    jdbc-url: ''
+    # Empty = try com.mysql.cj.jdbc.Driver, com.mysql.jdbc.Driver
+    # and then org.mariadb.jdbc.Driver. Spigot and Paper ship the
+    # MySQL driver, so normally you do not need to set anything.
+    driver-class: ''
+    # Reused connections and connection timeout.
+    pool-size: 4
+    connection-timeout-ms: 5000
 
 sounds:
   # Interface sounds. The plugin picks the equivalent name for
