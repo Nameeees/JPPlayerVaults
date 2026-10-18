@@ -13,6 +13,10 @@ editor, no stock art — so it can be rebuilt or rebranded at any time.
 Each script starts with a `BRAND` block holding the plugin name and the shared lines; for a new
 plugin, edit that block first. The rest of the text is product-specific on purpose.
 
+> **The banner and the six infographics print the version in their footer** (`FOOTLINE` in both
+> scripts). When you bump the version, update that line, re-run the scripts and copy
+> `banner.png` to the documentation repository, or the artwork will advertise the old release.
+
 ```bash
 python docs/assets/generate_banner_icon.py
 python docs/assets/generate_infographics.py

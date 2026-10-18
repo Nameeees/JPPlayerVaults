@@ -197,6 +197,7 @@ placement of every asset, the clickable support banners and the pre-submit check
 | `deploy-pages` fails on the first push | Pages was not enabled yet. Enable it with `build_type: workflow`, then re-run the job. |
 | Configuration changes silently break servers | Clamp and report invalid values in the console instead of throwing; keep `config-version` for migrations. |
 | Accents turn into `Ã©` / `â€"` and an invisible BOM appears at the top of a file | Windows PowerShell 5.1 `Get-Content -Raw` + `Set-Content -Encoding UTF8` reads and writes with the ANSI code page and prepends a BOM. For Markdown/YAML use an editor, `git apply`, or Python (`path.read_bytes().decode("utf-8")`). A quick audit: flag files whose bytes start with `EF BB BF`, or that contain `Â`, `Ã` or `â€`. |
+| The published images still show the previous version | The banner and the infographics print the version in their footer (`FOOTLINE` in `generate_banner_icon.py` and `generate_infographics.py`). Add "regenerate the artwork" to the release checklist for every version bump, and copy `banner.png` into the documentation repository, which keeps its own copy. |
 
 ## 8. Release checklist (short form)
 

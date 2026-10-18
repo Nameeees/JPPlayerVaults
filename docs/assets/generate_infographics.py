@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ------------------------------------------------------------------ BRAND
 BRAND = "JPPlayerVaults"
-FOOTLINE = "JPPlayerVaults  \u00b7  v1.0.0  \u00b7  MIT  \u00b7  Spigot & Paper"
+FOOTLINE = "JPPlayerVaults  \u00b7  v1.1.0  \u00b7  MIT  \u00b7  Spigot & Paper"
 SERIES = "1.8 \u2192 26.3"
 
 OUT = os.path.dirname(os.path.abspath(__file__))
@@ -215,14 +215,14 @@ def ic_ghost(draw, cx, cy, s):
 
 def features():
     image, draw = base("What you get",
-                       "Private, rank-based vaults with no strings attached.")
+                       "Private, rank-based vaults, two storage backends and admin tools.")
     cards = [
         (ic_jar, "One jar, 1.8 \u2192 latest", "The same build runs on Spigot, Paper and their forks."),
-        (ic_no_deps, "No dependencies", "No Vault, no database, no ProtocolLib, no NMS."),
+        (ic_no_deps, "No dependencies", "No Vault, no ProtocolLib, no NMS, nothing shaded."),
         (ic_rank, "Ranks decide", "The highest jpvaults.vaults.N the player has wins."),
         (ic_shield, "Built to protect items", "Durable saves, atomic writes, Q and F guarded."),
-        (ic_doc, "Readable YAML", "One file per player, easy to back up or repair."),
-        (ic_globe, "English & Spanish", "Every message configurable, more languages by file."),
+        (ic_doc, "YAML or a database", "Readable files by default, MySQL over JDBC if you prefer."),
+        (ic_globe, "Admin tools included", "Open, inspect and wipe vaults; English and Spanish."),
     ]
     x0, y0, cw, ch, gap = 80, 226, 360, 196, 40
     for index, (icon, title, body) in enumerate(cards):
@@ -321,7 +321,8 @@ def permissions():
     draw.text((80, 540), "Example: a rank with jpvaults.vaults.3 can open /pv 1\u20133; /pv 4 answers \u201clocked\u201d.",
               font=font(REGULAR, 21), fill=MUTED)
     x = 80
-    for text in ("jpvaults.use \u2014 default true", "jpvaults.reload \u2014 OP", "Up to 100 vaults per rank"):
+    for text in ("jpvaults.use \u2014 default true", "jpvaults.vaults.N \u2014 rank nodes",
+                 "jpvaults.admin \u2014 OP", "jpvaults.reload \u2014 OP"):
         x += pill(draw, x, 592, text, outline=(52, 70, 96), color=MUTED) + 16
     image.convert("RGB").save(os.path.join(OUT, "permissions.png"), "PNG", optimize=True)
     print("permissions.png")
@@ -334,7 +335,7 @@ def setup():
     image, draw = base("Ready in three steps.",
                        "Drop the jar in, grant the ranks, and players can open their vaults.")
     steps = [
-        (ic_download, "1", "Install", "Put JPPlayerVaults-1.0.0.jar in plugins/ and start the server."),
+        (ic_download, "1", "Install", "Put the jar in plugins/ and start the server."),
         (ic_key, "2", "Grant the ranks", "Set jpvaults.vaults.N on each group with LuckPerms or similar."),
         (ic_terminal, "3", "Play", "Players run /pv 1, /pv 2\u2026 and their vault opens like a chest."),
     ]
@@ -353,10 +354,10 @@ def setup():
             draw.text((x + 36, yy), line, font=font(REGULAR, 19), fill=MUTED)
             yy += 28
 
-    draw.text((80, 546), "Configuration: vaults.size, default-amount, max-amount, autosave, sounds and messages.",
+    draw.text((80, 546), "Configuration: vaults.size, default-amount, max-amount, storage.type (yaml or mysql), autosave and messages.",
               font=font(REGULAR, 21), fill=MUTED)
     x = 80
-    for text in ("config.yml", "messages_en.yml", "messages_es.yml", "/pv reload"):
+    for text in ("config.yml", "messages_en.yml", "messages_es.yml", "/pv reload", "/pv admin \u2026"):
         x += pill(draw, x, 596, text, outline=(52, 70, 96), color=MUTED) + 16
     image.convert("RGB").save(os.path.join(OUT, "setup.png"), "PNG", optimize=True)
     print("setup.png")
@@ -367,29 +368,30 @@ def setup():
 
 def commands():
     image, draw = base("Commands & messages",
-                       "Three commands and one prefix; every visible text lives in a language file.")
+                       "Four command groups and one prefix; every visible text lives in a language file.")
     rows = [
         ("/pv <number>", "Opens your private vault with that number.", "jpvaults.use"),
         ("/pv  or  /pv help", "Shows the help and how many vaults you have.", "jpvaults.use"),
         ("/pv reload", "Reloads config.yml and the messages in place.", "jpvaults.reload"),
+        ("/pv admin \u2026", "Open, inspect, wipe and migrate (administrators).", "jpvaults.admin"),
     ]
-    y = 250
+    y = 232
     for command, description, permission in rows:
-        draw.rounded_rectangle([80, y, 700, y + 92], radius=14, fill=CARD,
+        draw.rounded_rectangle([80, y, 700, y + 84], radius=14, fill=CARD,
                                outline=CARD_BORDER, width=2)
-        draw.text((112, y + 20), command, font=font(SEMI, 26), fill=GREEN)
-        draw.text((112, y + 58), description, font=font(REGULAR, 17), fill=MUTED)
+        draw.text((112, y + 16), command, font=font(SEMI, 26), fill=GREEN)
+        draw.text((112, y + 52), description, font=font(REGULAR, 17), fill=MUTED)
         width = draw.textlength(permission, font=font(REGULAR, 16)) + 34
-        draw.rounded_rectangle([700 - 26 - width, y + 28, 700 - 26, y + 62], radius=17,
+        draw.rounded_rectangle([700 - 26 - width, y + 24, 700 - 26, y + 58], radius=17,
                                fill=(17, 25, 38), outline=(46, 62, 86), width=2)
-        draw.text((700 - 26 - width / 2, y + 45), permission, font=font(REGULAR, 16),
+        draw.text((700 - 26 - width / 2, y + 41), permission, font=font(REGULAR, 16),
                   fill=MUTED, anchor="mm")
-        y += 108
+        y += 98
 
-    draw.text((80, 578), "Aliases: /playervaults and /jpvaults.  Tab completion included.",
+    draw.text((80, 620), "Aliases: /playervaults and /jpvaults.  Tab completion included.",
               font=font(REGULAR, 19), fill=DIM)
 
-    x0, y0, cw, ch = 760, 250, 440, 320
+    x0, y0, cw, ch = 760, 232, 440, 378
     draw.rounded_rectangle([x0, y0, x0 + cw, y0 + ch], radius=14, fill=(15, 22, 34),
                            outline=CARD_BORDER, width=2)
     draw.rounded_rectangle([x0, y0, x0 + cw, y0 + 48], radius=14, fill=(21, 30, 45))
