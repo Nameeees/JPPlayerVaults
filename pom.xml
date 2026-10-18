@@ -28,6 +28,13 @@
             <id>spigotmc-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
+        <!-- PaperMC publica la API de Spigot y las dependencias que Spigot
+             dejo de servir (bungeecord-chat), asi que el build funciona en
+             cualquier maquina y en CI sin tocar el repositorio local. -->
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
         <repository>
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
@@ -40,6 +47,14 @@
             <artifactId>spigot-api</artifactId>
             <version>1.8.8-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
+            <exclusions>
+                <!-- Solo la usa la API de chat de BungeeCord, que este plugin
+                     no toca: excluirla evita depender de un snapshot ajeno. -->
+                <exclusion>
+                    <groupId>net.md-5</groupId>
+                    <artifactId>bungeecord-chat</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 
@@ -72,6 +87,18 @@
                 <version>3.13.0</version>
                 <configuration>
                     <release>8</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <!-- Un plugin no necesita el pom embebido, y dejarlo
+                             fuera evita que retocar el pom cambie el .jar. -->
+                        <addMavenDescriptor>false</addMavenDescriptor>
+                    </archive>
                 </configuration>
             </plugin>
         </plugins>
