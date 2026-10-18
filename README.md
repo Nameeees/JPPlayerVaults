@@ -4,13 +4,13 @@
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Java 8+](https://img.shields.io/badge/Java-8%2B-orange)](https://nameeees.github.io/jpvaults-docs/compatibility/)
 [![Documentation](https://img.shields.io/badge/docs-nameeees.github.io-22c55e)](https://nameeees.github.io/jpvaults-docs/)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2)](https://discord.gg/HATd9QgukF)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2)](https://discord.gg/VQSvfQw8v8)
 
 **Private, permission-based player vaults for Minecraft 1.8 → latest — one jar, no dependencies.**
 
 ![JPPlayerVaults](docs/assets/banner.png)
 
-**Documentation:** <https://nameeees.github.io/jpvaults-docs/> · **Discord:** <https://discord.gg/HATd9QgukF>
+**Documentation:** <https://nameeees.github.io/jpvaults-docs/> · **Discord:** <https://discord.gg/VQSvfQw8v8>
 
 JPPlayerVaults gives every player a set of private chests (`/pv 1`, `/pv 2`, …). How many vaults a
 player can open is decided by their rank, not by the plugin, and each vault is a normal inventory of
@@ -265,7 +265,7 @@ build, documentation site, test harness and SpigotMC submission pack.
 
 - **Documentation site:** <https://nameeees.github.io/jpvaults-docs/> — installation, configuration,
   permissions, data safety, FAQ and changelog.
-- **Community Discord:** <https://discord.gg/HATd9QgukF> — support, bug reports and release updates.
+- **Community Discord:** <https://discord.gg/VQSvfQw8v8> — support, bug reports and release updates.
 - **Bug reports:** open an issue on this repository or ask in the Discord. Please include the server
   version, the plugin version, `config.yml` and the relevant console log.
 - **SpigotMC:** the resource page is the primary download; this repository is the source.

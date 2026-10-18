@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to JPPlayerVaults are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses
@@ -33,7 +33,7 @@ First public release.
   change meanwhile, so a failed write is retried instead of being silently dropped.
 - Invalid configuration values (vault size, amount, sound volume/pitch) are clamped and reported
   in the console instead of breaking the plugin.
-- Inventory titles are capped at 32 visible characters so a long title cannot crash 1.8â€“1.12
+- Inventory titles are capped at 32 visible characters so a long title cannot crash 1.8–1.12
   clients.
 - `/pv` without `jpvaults.use`, a missing `pv` command in `plugin.yml`, and a language file that
   does not exist are handled gracefully.

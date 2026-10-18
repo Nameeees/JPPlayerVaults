@@ -92,13 +92,15 @@ Transcript:
 
 ```
 [BOT] spawned as TestBot
-[BOT] window slots=90 title="\"§8Â» §a§lVault §f#1 §8Â«\""
+[BOT] window slots=90 title="\"§8» §a§lVault §f#1 §8«\""
 [BOT] moving the diamond from window slot 81 into vault slot 0
 [BOT] vault slot 0 now holds 5 diamond
 [BOT] disconnected: the plugin must drop its cache and reload from disk
 [BOT] after reconnecting, vault slot 0 = {"name":"diamond","count":5}
 [BOT] PASS
 ```
+
+The inventory title is decoded here; the headless client's console mangles non-ASCII characters when it prints the raw title.
 
 Server side:
 

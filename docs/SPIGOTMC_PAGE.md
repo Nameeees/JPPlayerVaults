@@ -18,7 +18,7 @@ Copy the BBCode block into the resource description field and fill the form with
 | Price | Free |
 | External download | No — upload `JPPlayerVaults-1.0.0.jar` directly |
 | License | MIT (source is included and unobfuscated) |
-| Source / issues | `https://github.com/Nameeees/JPPlayerVaults` (source) · `https://nameeees.github.io/jpvaults-docs/` (docs) · `https://discord.gg/HATd9QgukF` (support) |
+| Source / issues | `https://github.com/Nameeees/JPPlayerVaults` (source) · `https://nameeees.github.io/jpvaults-docs/` (docs) · `https://discord.gg/VQSvfQw8v8` (support) |
 | Tags (pick 4–5) | `player vaults`, `vaults`, `storage`, `enderchest`, `permissions` |
 
 > SpigotMC requires the description to be in English (forum rule 9). The in-game text is English by
@@ -75,7 +75,7 @@ keep it after the FAQ. Both links are already the real ones:
 [CENTER]
 [SIZE=4][B]Community & documentation[/B][/SIZE]
 
-[URL='https://discord.gg/HATd9QgukF'][IMG]https://YOUR-IMAGE-HOST/discord.png[/IMG][/URL]
+[URL='https://discord.gg/VQSvfQw8v8'][IMG]https://YOUR-IMAGE-HOST/discord.png[/IMG][/URL]
 [URL='https://nameeees.github.io/jpvaults-docs/'][IMG]https://YOUR-IMAGE-HOST/documentation.png[/IMG][/URL]
 [/CENTER]
 ```
@@ -90,7 +90,7 @@ inside the banners — for example if the invite ever changes — regenerate the
 
 ```bash
 python docs/assets/generate_cta.py \
-  --discord-url "discord.gg/HATd9QgukF" \
+  --discord-url "discord.gg/VQSvfQw8v8" \
   --docs-url "nameeees.github.io/jpvaults-docs"
 ```
 

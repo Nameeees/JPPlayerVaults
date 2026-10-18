@@ -103,7 +103,7 @@ El `.jar` queda en `target/JPPlayerVaults-<versión>.jar`.
 
 - Documentación completa (inglés): <https://nameeees.github.io/jpvaults-docs/>
 - Código fuente y descargas: <https://github.com/Nameeees/JPPlayerVaults>
-- Discord de la comunidad: <https://discord.gg/HATd9QgukF>
+- Discord de la comunidad: <https://discord.gg/VQSvfQw8v8>
 - Página del recurso en SpigotMC: el enlace se añade al publicar.
 
 ## Licencia
