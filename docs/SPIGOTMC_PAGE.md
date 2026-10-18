@@ -290,3 +290,30 @@ MIT. You may use, modify and redistribute the plugin, including on commercial se
 - Keep the native Minecraft version updated when a new release comes out (SpigotMC requires support
   for the latest stable version).
 - Publish the same text on the GitHub release page; keep `CHANGELOG.md` in sync.
+
+## 6. Publishing an update
+
+Every release after the first one is published from **Resource → Post an update**, which asks for a
+version, an update title and a message. The message accepts BBCode and is what users see in their
+alerts, so it should stand on its own.
+
+Structure that works:
+
+1. **Version heading** and one sentence on what the update is about.
+2. **New features**, in `[SIZE=4]` blocks with `[LIST]`, most important first.
+3. **Behaviour changes** and anything that could surprise an existing installation.
+4. **Updating**, numbered: back up, replace the jar, restart, optional steps, new permissions.
+5. **Verified**, the versions actually tested.
+6. **Footer** with docs, changelog, source, Discord and the jar's SHA-256.
+
+Rules of thumb:
+
+- Write it for someone who has never read the changelog: say what changed *for them*, not which
+  classes were touched.
+- Say explicitly when no configuration change is needed; most users only want to know that.
+- Mention new permissions and how to grant them, so admins do not discover them from a bug report.
+- If the resource images changed, re-upload them — the description keeps pointing at the old
+  picture otherwise.
+- Keep the update title short: `1.1.0 — MySQL storage and /pv admin commands`.
+
+A filled-in example for 1.1.0 is in [SPIGOTMC_UPDATE_1.1.0.md](SPIGOTMC_UPDATE_1.1.0.md).
