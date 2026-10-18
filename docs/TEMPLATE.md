@@ -196,6 +196,7 @@ placement of every asset, the clickable support banners and the pre-submit check
 | `mkdocs build --strict` aborts | A relative link is wrong or a page is missing from `nav`. Both are errors, not warnings. |
 | `deploy-pages` fails on the first push | Pages was not enabled yet. Enable it with `build_type: workflow`, then re-run the job. |
 | Configuration changes silently break servers | Clamp and report invalid values in the console instead of throwing; keep `config-version` for migrations. |
+| Accents turn into `Ã©` / `â€"` and an invisible BOM appears at the top of a file | Windows PowerShell 5.1 `Get-Content -Raw` + `Set-Content -Encoding UTF8` reads and writes with the ANSI code page and prepends a BOM. For Markdown/YAML use an editor, `git apply`, or Python (`path.read_bytes().decode("utf-8")`). A quick audit: flag files whose bytes start with `EF BB BF`, or that contain `Â`, `Ã` or `â€`. |
 
 ## 8. Release checklist (short form)
 
